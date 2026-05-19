@@ -7,5 +7,4 @@ pillow
 httpx
 pydantic-settings
 gigachat
-docx
-asyncio
+python-dotenv

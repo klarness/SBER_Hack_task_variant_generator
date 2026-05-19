@@ -55,6 +55,11 @@ func (h *Handlers) CreateTask(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 		writeError(w, stdhttp.StatusBadRequest, errors.New("settings must be a valid JSON object"))
 		return
 	}
+	var settingsObject map[string]any
+	if err := json.Unmarshal(settings, &settingsObject); err != nil {
+		writeError(w, stdhttp.StatusBadRequest, errors.New("settings must be a valid JSON object"))
+		return
+	}
 
 	files, err := readUploadedFiles(r.MultipartForm)
 	if err != nil {
@@ -65,11 +70,15 @@ func (h *Handlers) CreateTask(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 	variantCount := h.defaultVariantCount
 	if raw := r.FormValue("variant_count"); raw != "" {
 		parsed, err := strconv.Atoi(raw)
-		if err != nil || parsed <= 0 {
-			writeError(w, stdhttp.StatusBadRequest, errors.New("variant_count must be a positive integer"))
+		if err != nil || parsed < 2 || parsed > 10 {
+			writeError(w, stdhttp.StatusBadRequest, errors.New("variant_count must be an integer from 2 to 10"))
 			return
 		}
 		variantCount = parsed
+	}
+	if variantCount < 2 || variantCount > 10 {
+		writeError(w, stdhttp.StatusBadRequest, errors.New("variant_count must be an integer from 2 to 10"))
+		return
 	}
 
 	h.logger.InfoContext(r.Context(), "create task request parsed",
