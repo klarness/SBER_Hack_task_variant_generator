@@ -1,0 +1,6 @@
+DROP TABLE IF EXISTS variant_item_history;
+DROP TABLE IF EXISTS variant_items;
+DROP TABLE IF EXISTS variants;
+DROP TABLE IF EXISTS task_items;
+DROP TABLE IF EXISTS tasks;
+DROP TABLE IF EXISTS users;
