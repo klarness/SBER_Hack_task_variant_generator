@@ -1,0 +1,14 @@
+fastapi
+uvicorn[standard]
+
+python-multipart
+
+pymupdf
+python-docx
+pillow
+
+easyocr
+python-magic
+
+pydantic-settings
+
