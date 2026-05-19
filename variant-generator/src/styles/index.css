@@ -2,24 +2,6 @@
 @tailwind components;
 @tailwind utilities;
 
-/* SB Sans подключи здесь, когда найдёшь ссылки.
-   Пример (заменить на реальные ссылки):
-@font-face {
-  font-family: "SB Sans Text";
-  src: url("/fonts/SBSansText-Regular.woff2") format("woff2");
-  font-weight: 400;
-  font-display: swap;
-}
-@font-face {
-  font-family: "SB Sans Display";
-  src: url("/fonts/SBSansDisplay-Bold.woff2") format("woff2");
-  font-weight: 700;
-  font-display: swap;
-}
-*/
-
-/* Запасной шрифт — Manrope с Google Fonts.
-   Можно убрать, если будет SB Sans. */
 @import url("https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap");
 
 :root {
