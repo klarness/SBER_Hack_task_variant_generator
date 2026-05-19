@@ -4,4 +4,4 @@ bin
 tmp
 *.log
 Dockerfile
-docker-compose*.yaml
+../docker-compose.yaml
