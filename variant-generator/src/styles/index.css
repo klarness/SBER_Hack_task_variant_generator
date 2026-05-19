@@ -1,0 +1,115 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* SB Sans подключи здесь, когда найдёшь ссылки.
+   Пример (заменить на реальные ссылки):
+@font-face {
+  font-family: "SB Sans Text";
+  src: url("/fonts/SBSansText-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: "SB Sans Display";
+  src: url("/fonts/SBSansDisplay-Bold.woff2") format("woff2");
+  font-weight: 700;
+  font-display: swap;
+}
+*/
+
+/* Запасной шрифт — Manrope с Google Fonts.
+   Можно убрать, если будет SB Sans. */
+@import url("https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap");
+
+:root {
+  --sber-500: #21A038;
+  --sber-600: #1A8A2E;
+  --ink-900: #1A1A1A;
+  --ink-700: #4F5358;
+  --ink-500: #80868B;
+  --surface-base: #F7F7F8;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  @apply bg-surface-base text-ink-900 font-sans antialiased;
+  font-feature-settings: "ss01", "cv11";
+}
+
+/* выделение текста — фирменный зелёный */
+::selection {
+  background: rgba(33, 160, 56, 0.2);
+  color: var(--ink-900);
+}
+
+/* красивый скроллбар */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #d4d6d9;
+  border-radius: 8px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #b8bbbe;
+}
+
+/* === TipTap editor === */
+.tiptap {
+  @apply outline-none text-ink-900 leading-relaxed;
+}
+.tiptap p {
+  @apply my-2;
+}
+.tiptap h1 {
+  @apply text-2xl font-bold my-3 font-display;
+}
+.tiptap h2 {
+  @apply text-xl font-semibold my-3 font-display;
+}
+.tiptap h3 {
+  @apply text-lg font-semibold my-2 font-display;
+}
+.tiptap ul {
+  @apply list-disc pl-6 my-2;
+}
+.tiptap ol {
+  @apply list-decimal pl-6 my-2;
+}
+.tiptap a {
+  @apply text-accent-blue underline;
+}
+.tiptap p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  @apply text-ink-500 pointer-events-none float-left h-0;
+}
+
+/* анимация лоадера */
+@keyframes shimmer {
+  0% {
+    background-position: -1000px 0;
+  }
+  100% {
+    background-position: 1000px 0;
+  }
+}
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    #f1f2f4 0%,
+    #e6e8eb 50%,
+    #f1f2f4 100%
+  );
+  background-size: 2000px 100%;
+  animation: shimmer 1.6s linear infinite;
+}
