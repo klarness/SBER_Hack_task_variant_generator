@@ -1,0 +1,13 @@
+# virtual environments
+venv/
+.env/
+.venv/
+
+# python cache
+__pycache__/
+*.pyc
+
+# test database
+*.db
+
+.env
