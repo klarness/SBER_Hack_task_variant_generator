@@ -1,13 +1,12 @@
-// Тонкая обёртка вокруг fetch.
-// Добавляет X-User-ID и нормализует ошибки в человекочитаемый вид.
-
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || "";
 const USER_ID = import.meta.env.VITE_DEV_USER_ID || "";
 
 export class ApiError extends Error {
-  constructor(public status: number, message: string) {
+  status: number;
+  constructor(status: number, message: string) {
     super(message);
     this.name = "ApiError";
+    this.status = status;
   }
 }
 
@@ -24,7 +23,6 @@ export async function apiFetch(
     ...init.headers,
   };
 
-  // если в body не FormData — ставим JSON content-type
   if (init.body && !(init.body instanceof FormData) && !headers["Content-Type"]) {
     headers["Content-Type"] = "application/json";
   }

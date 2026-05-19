@@ -1,5 +1,5 @@
 import { useMutation } from "@tanstack/react-query";
-import { Download, BookmarkPlus, FileText, FileType2 } from "lucide-react";
+import { BookmarkPlus, FileText, FileType2 } from "lucide-react";
 import { Button } from "@/shared/ui/Button";
 import { downloadBlob, exportTask } from "@/shared/api/tasks";
 
