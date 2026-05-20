@@ -1,14 +1,23 @@
 export type TaskStatus = "pending" | "processing" | "done" | "failed";
 
-export type VariationStrategy =
-  | "numeric" 
-  | "synonyms" 
-  | "context" 
-  | "reorder"; 
+export type VariationType =
+  | "replace_numbers"
+  | "reorder_enumeration"
+  | "synonymize_non_key_wording"
+  | "replace_context"
+  | "change_names"
+  | "change_units"
+  | "reorder_steps";
+
+export type NumberType = "integers" | "decimals" | "fractions";
 
 export interface TaskSettings {
-  variation_strategies: VariationStrategy[];
-  locked_phrases: string[]; 
+  variation_types: VariationType[];
+  number_types: NumberType[];
+  number_range: string;
+  locked_parts: string[];
+  preserve_difficulty: boolean;
+  check_answer_uniqueness: boolean;
 }
 
 export interface TaskItem {

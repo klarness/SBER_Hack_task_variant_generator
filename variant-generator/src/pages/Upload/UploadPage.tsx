@@ -18,8 +18,12 @@ export function UploadPage() {
   const [files, setFiles] = useState<File[]>([]);
   const [variantCount, setVariantCount] = useState(4);
   const [settings, setSettings] = useState<TaskSettings>({
-    variation_strategies: ["numeric"],
-    locked_phrases: [],
+    variation_types: ["replace_numbers"],
+    number_types: ["integers"],
+    number_range: "keep comparable to original",
+    locked_parts: [],
+    preserve_difficulty: true,
+    check_answer_uniqueness: true,
   });
 
   const createMutation = useMutation({

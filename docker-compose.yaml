@@ -1,4 +1,19 @@
 services:
+  frontend:
+    build:
+      context: variant-generator
+      dockerfile: Dockerfile
+    environment:
+      VITE_API_BASE_URL: "${VITE_API_BASE_URL:-}"
+      VITE_PROXY_TARGET: "${VITE_PROXY_TARGET:-http://core:8080}"
+      VITE_DEV_USER_ID: "${VITE_DEV_USER_ID:-11111111-1111-1111-1111-111111111111}"
+    ports:
+      - "5173:5173"
+    depends_on:
+      core:
+        condition: service_started
+    restart: unless-stopped
+
   core:
     build:
       context: core

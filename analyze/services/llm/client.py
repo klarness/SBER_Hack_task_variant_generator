@@ -233,7 +233,22 @@ class GigaChatClient:
 
 def normalize_generation_settings(settings: dict[str, Any] | None) -> dict[str, Any]:
     source = settings or {}
-    variation_types = _string_list(source.get("variation_types") or source.get("variation") or source.get("variations"))
+    variation_types = _string_list(
+        source.get("variation_types")
+        or source.get("variation_strategies")
+        or source.get("variation")
+        or source.get("variations")
+    )
+    variation_aliases = {
+        "numeric": "replace_numbers",
+        "synonyms": "synonymize_non_key_wording",
+        "context": "replace_context",
+        "reorder": "reorder_steps",
+    }
+    variation_types = [
+        variation_aliases.get(variation_type, variation_type)
+        for variation_type in variation_types
+    ]
 
     boolean_type_map = {
         "replace_numbers": "replace_numbers",
@@ -268,6 +283,7 @@ def normalize_generation_settings(settings: dict[str, Any] | None) -> dict[str, 
         "number_range": source.get("number_range") or number_settings.get("range") or "keep comparable to original",
         "locked_parts": _string_list(
             source.get("locked_parts")
+            or source.get("locked_phrases")
             or source.get("protected_fragments")
             or source.get("do_not_change")
         ),

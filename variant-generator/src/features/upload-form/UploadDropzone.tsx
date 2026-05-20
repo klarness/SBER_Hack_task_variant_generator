@@ -8,6 +8,7 @@ interface Props {
 }
 
 const ACCEPT = {
+  "text/plain": [".txt"],
   "application/pdf": [".pdf"],
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [
     ".docx",
@@ -50,7 +51,7 @@ export function UploadDropzone({ files, onChange }: Props) {
             : "Перетащите файлы или нажмите"}
         </p>
         <p className="mt-1 text-xs text-ink-500">
-          PDF, DOCX, PNG, JPG — можно несколько
+          TXT, PDF, DOCX, PNG, JPG — можно несколько
         </p>
       </div>
 

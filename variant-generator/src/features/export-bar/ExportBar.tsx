@@ -9,7 +9,7 @@ interface Props {
 }
 
 export function ExportBar({ taskId, title }: Props) {
-  const pdfMutation = useMutation({
+  const docxMutation = useMutation({
     mutationFn: async () => {
       const res = await exportTask(taskId);
       downloadBlob(res);
@@ -28,8 +28,8 @@ export function ExportBar({ taskId, title }: Props) {
       <Button
         size="sm"
         variant="secondary"
-        onClick={() => pdfMutation.mutate()}
-        loading={pdfMutation.isPending}
+        disabled
+        title="Скоро"
       >
         <FileText size={14} strokeWidth={1.75} />
         Экспорт PDF
@@ -38,8 +38,8 @@ export function ExportBar({ taskId, title }: Props) {
       <Button
         size="sm"
         variant="secondary"
-        disabled
-        title="Скоро"
+        onClick={() => docxMutation.mutate()}
+        loading={docxMutation.isPending}
       >
         <FileType2 size={14} strokeWidth={1.75} />
         Экспорт DOCX
