@@ -13,6 +13,7 @@ type Config struct {
 	ValkeyPassword       string
 	ValkeyDB             int
 	AIWorkerBaseURL      string
+	AIWorkerConcurrency  int
 	RequestLimitCapacity int
 	RequestLimitRefill   int
 	RequestLimitWindow   time.Duration
@@ -28,6 +29,7 @@ func Load() Config {
 		ValkeyPassword:       getEnv("VALKEY_PASSWORD", ""),
 		ValkeyDB:             getEnvInt("VALKEY_DB", 0),
 		AIWorkerBaseURL:      getEnv("AI_WORKER_BASE_URL", "http://localhost:8000"),
+		AIWorkerConcurrency:  getEnvInt("AI_WORKER_CONCURRENCY", 1),
 		RequestLimitCapacity: getEnvInt("RATE_LIMIT_CAPACITY", 30),
 		RequestLimitRefill:   getEnvInt("RATE_LIMIT_REFILL", 30),
 		RequestLimitWindow:   getEnvDuration("RATE_LIMIT_WINDOW", time.Minute),

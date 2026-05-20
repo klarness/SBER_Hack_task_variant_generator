@@ -267,6 +267,7 @@ func (o *Orchestrator) generateAndValidate(ctx context.Context, task *domain.Tas
 				VariantNumber: variantNumber,
 				Original:      sourceItem.Content,
 				Generated:     item.Content,
+				Settings:      task.Settings,
 			})
 			if err != nil {
 				return err

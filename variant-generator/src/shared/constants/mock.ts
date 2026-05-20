@@ -12,8 +12,12 @@ export const MOCK_TASK: Task = {
   original_text:
     "1. Решите уравнение: x² − 5x + 6 = 0.\n2. Найдите корни: 2x² + 3x − 2 = 0.\n3. При каком значении p уравнение x² + px + 9 = 0 имеет один корень?",
   settings: {
-    variation_strategies: ["numeric", "synonyms"],
-    locked_phrases: [],
+    variation_types: ["replace_numbers", "synonymize_non_key_wording"],
+    number_types: ["integers"],
+    number_range: "keep comparable to original",
+    locked_parts: [],
+    preserve_difficulty: true,
+    check_answer_uniqueness: true,
   },
   task_items: [
     {

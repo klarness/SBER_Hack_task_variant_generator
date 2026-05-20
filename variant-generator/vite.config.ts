@@ -2,6 +2,8 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "node:path";
 
+const proxyTarget = process.env.VITE_PROXY_TARGET || "http://localhost:8080";
+
 export default defineConfig({
   plugins: [react()],
   resolve: {
@@ -11,13 +13,12 @@ export default defineConfig({
   },
   server: {
     port: 5173,
-    // если бек локально на 8080 — раскомментируй прокси,
-    // тогда фронт стучится в /api/v1/... напрямую без CORS
-    // proxy: {
-    //   "/api": {
-    //     target: "http://localhost:8080",
-    //     changeOrigin: true,
-    //   },
-    // },
+    host: "0.0.0.0",
+    proxy: {
+      "/api": {
+        target: proxyTarget,
+        changeOrigin: true,
+      },
+    },
   },
 });

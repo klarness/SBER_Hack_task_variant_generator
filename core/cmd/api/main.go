@@ -26,6 +26,7 @@ func main() {
 		"database_url_set", cfg.DatabaseURL != "",
 		"valkey_addr", cfg.ValkeyAddr,
 		"ai_worker_base_url", cfg.AIWorkerBaseURL,
+		"ai_worker_concurrency", cfg.AIWorkerConcurrency,
 		"rate_limit_capacity", cfg.RequestLimitCapacity,
 		"rate_limit_refill", cfg.RequestLimitRefill,
 		"rate_limit_window", cfg.RequestLimitWindow.String(),
@@ -57,7 +58,8 @@ func main() {
 	logger.Info("valkey connected")
 
 	repo := database.NewPostgresRepository(pool)
-	aiClient := aiworker.NewPythonClient(cfg.AIWorkerBaseURL, 90*time.Second, logger)
+	pythonClient := aiworker.NewPythonClient(cfg.AIWorkerBaseURL, 90*time.Second, logger)
+	aiClient := aiworker.NewLimitedClient(pythonClient, cfg.AIWorkerConcurrency, logger)
 	limiter := ratelimit.NewValkeyLimiter(redisClient, cfg.RequestLimitCapacity, cfg.RequestLimitRefill, cfg.RequestLimitWindow)
 
 	orchestrator := service.NewOrchestrator(repo, aiClient, logger)

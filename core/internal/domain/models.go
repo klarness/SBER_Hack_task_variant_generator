@@ -114,12 +114,13 @@ type GenerateRequest struct {
 }
 
 type ValidateRequest struct {
-	UserID        uuid.UUID `json:"user_id"`
-	TaskID        uuid.UUID `json:"task_id"`
-	TaskItemID    uuid.UUID `json:"task_item_id"`
-	VariantNumber int       `json:"variant_number"`
-	Original      string    `json:"original"`
-	Generated     string    `json:"generated"`
+	UserID        uuid.UUID       `json:"user_id"`
+	TaskID        uuid.UUID       `json:"task_id"`
+	TaskItemID    uuid.UUID       `json:"task_item_id"`
+	VariantNumber int             `json:"variant_number"`
+	Original      string          `json:"original"`
+	Generated     string          `json:"generated"`
+	Settings      json.RawMessage `json:"settings,omitempty"`
 }
 
 type ExportResult struct {

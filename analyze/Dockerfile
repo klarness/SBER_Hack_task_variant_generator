@@ -1,28 +1,20 @@
 FROM python:3.12-slim
 
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y \
-    tesseract-ocr \
-    tesseract-ocr-rus \
-    libmagic1
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    libmagic1 \
+    && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt .
+COPY requirements.txt /tmp/requirements.txt
+RUN pip install --no-cache-dir -r /tmp/requirements.txt
 
-RUN pip install --no-cache-dir -r requirements.txt
+COPY . /app/analyze
 
-COPY . .
+EXPOSE 8000
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
-
-FROM alpine:latest
-
-# Устанавливаем пакет ca-certificates
-RUN apk --no-cache add ca-certificates
-
-# Копируем сертификаты Минцифры
-COPY russian_trusted_root_ca.crt /usr/local/share/ca-certificates/russian_trusted_root_ca.crt
-COPY russian_trusted_sub_ca.crt /usr/local/share/ca-certificates/russian_trusted_sub_ca.crt
-
-# Обновляем хранилище
-RUN update-ca-certificates
+CMD ["uvicorn", "analyze.main:app", "--host", "0.0.0.0", "--port", "8000"]
