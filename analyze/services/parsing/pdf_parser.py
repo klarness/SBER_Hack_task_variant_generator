@@ -1,8 +1,89 @@
 import asyncio
+import io
+import re
+import statistics
+import unicodedata
 
 import fitz
+import pdfplumber
 
 from analyze.services.llm.client import GigaChatClient
+
+
+PDF_LINE_Y_TOLERANCE = 11.0
+
+
+def _normalize_pdf_token(text: str) -> str:
+    text = unicodedata.normalize("NFKC", text)
+
+    replacements = {
+        "\u2212": "-",
+        "\u2013": "-",
+        "\u2014": "-",
+        "\u00d7": "*",
+        "\u2219": "*",
+        "\u22c5": "*",
+        "\u00b7": "*",
+    }
+
+    for source, target in replacements.items():
+        text = text.replace(source, target)
+
+    return text
+
+
+def _normalize_pdf_line(text: str) -> str:
+    text = _normalize_pdf_token(text)
+    text = re.sub(r"\s+", " ", text).strip()
+    text = re.sub(r"(?<=[A-Za-z])\s*(\d+)(?=[A-Za-z+\-*/=);,\s]|$)", r"^\1", text)
+    text = re.sub(r"(?<=\))\s*(\d+)(?=[;,\s]|$)", r"^\1", text)
+    text = re.sub(r"\s*([+\-*/=])\s*", r"\1", text)
+    text = re.sub(r"\s+([,.;:!?])", r"\1", text)
+    text = re.sub(r"\(\s+", "(", text)
+    text = re.sub(r"\s+\)", ")", text)
+    text = re.sub(r"([\u0430-\u044f\u0451]\))(?=\S)", r"\1 ", text, flags=re.IGNORECASE)
+
+    return text.strip()
+
+
+def _merge_pdf_lines(lines: list[str]) -> list[str]:
+    merged = []
+
+    for line in lines:
+        if not line:
+            continue
+
+        if merged and _should_append_to_previous(merged[-1], line):
+            separator = "" if line in {".", ",", ";", ":", ")"} else " "
+            merged[-1] = _normalize_pdf_line(f"{merged[-1]}{separator}{line}")
+            continue
+
+        merged.append(line)
+
+    return merged
+
+
+def _should_append_to_previous(previous: str, current: str) -> bool:
+    if current in {".", ",", ";", ":", ")"}:
+        return True
+
+    if re.search(r"[\u0430-\u044f\u0451]\)$", previous, flags=re.IGNORECASE):
+        return True
+
+    if previous.count("(") > previous.count(")"):
+        return True
+
+    return False
+
+
+def _compact_pdf_line(text: str) -> str:
+    text = _normalize_pdf_line(text)
+    text = re.sub(r"(?<=[A-Za-z0-9])\s+(?=[+\-*/^=;:.,)])", "", text)
+    text = re.sub(r"(?<=[+\-*/^=(])\s+(?=[A-Za-z0-9(])", "", text)
+    text = re.sub(r"(?<=[A-Za-z0-9)])\s+(?=[+\-*/^=])", "", text)
+    text = re.sub(r"(?<=[A-Za-z0-9)])\s+(?=\()", "", text)
+
+    return text.strip()
 
 
 class PDFParser:
@@ -15,11 +96,15 @@ class PDFParser:
 
         full_text = []
         image_tasks = []
+        extracted_text = self._extract_text_with_pdfplumber(file_bytes)
+
+        if extracted_text:
+            full_text.append(extracted_text)
 
         for page_index in range(len(doc)):
             page = doc[page_index]
 
-            page_text = page.get_text().strip()
+            page_text = "" if extracted_text else self._extract_page_text(page)
 
             if page_text:
                 full_text.append(page_text)
@@ -43,7 +128,134 @@ class PDFParser:
                 if text:
                     full_text.append(text)
 
-        return " ".join(full_text)
+        return "\n".join(full_text)
+
+    def _extract_text_with_pdfplumber(self, file_bytes: bytes) -> str:
+        try:
+            with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
+                pages = []
+
+                for page in pdf.pages:
+                    text = page.extract_text(
+                        x_tolerance=2,
+                        y_tolerance=7,
+                        layout=True,
+                    )
+                    normalized_text = self._normalize_pdfplumber_text(text or "")
+
+                    if normalized_text:
+                        pages.append(normalized_text)
+
+                return "\n".join(pages)
+        except Exception as error:
+            print(f"PDF pdfplumber text extraction error: {error}")
+            return ""
+
+    def _normalize_pdfplumber_text(self, text: str) -> str:
+        lines = [
+            _normalize_pdf_line(line)
+            for line in text.splitlines()
+            if line.strip()
+        ]
+
+        return "\n".join(_merge_pdf_lines(lines))
+
+    def _extract_page_text(self, page: fitz.Page) -> str:
+        words = page.get_text("words")
+
+        if not words:
+            return page.get_text().strip()
+
+        rows = self._group_words_by_visual_line(words)
+        lines = []
+
+        for row in rows:
+            line = self._row_to_text(row)
+
+            if line:
+                lines.append(line)
+
+        return "\n".join(lines).strip()
+
+    def _group_words_by_visual_line(self, words: list[tuple]) -> list[list[dict]]:
+        normalized_words = []
+
+        for word in words:
+            x0, y0, x1, y1, text, *_ = word
+            normalized_words.append(
+                {
+                    "x0": x0,
+                    "y0": y0,
+                    "x1": x1,
+                    "y1": y1,
+                    "cy": (y0 + y1) / 2,
+                    "text": _normalize_pdf_token(text),
+                }
+            )
+
+        rows: list[dict] = []
+
+        for word in sorted(normalized_words, key=lambda item: (item["cy"], item["x0"])):
+            best_row = None
+            best_distance = float("inf")
+
+            for row in rows:
+                distance = abs(word["cy"] - row["cy"])
+
+                if distance < best_distance:
+                    best_row = row
+                    best_distance = distance
+
+            if best_row is None or best_distance > PDF_LINE_Y_TOLERANCE:
+                rows.append({"cy": word["cy"], "words": [word]})
+                continue
+
+            best_row["words"].append(word)
+            best_row["cy"] = sum(item["cy"] for item in best_row["words"]) / len(best_row["words"])
+
+        return [
+            sorted(row["words"], key=lambda item: item["x0"])
+            for row in sorted(rows, key=lambda item: item["cy"])
+        ]
+
+    def _row_to_text(self, row: list[dict]) -> str:
+        baseline_candidates = [
+            item["y0"]
+            for item in row
+            if re.search(r"[A-Za-z0-9]", item["text"])
+            and not re.search(r"[\u0400-\u04FF]", item["text"])
+            and item["text"] not in {"(", ")", ";", ":", ","}
+        ]
+        baseline_y0 = max(baseline_candidates) if baseline_candidates else statistics.median(
+            item["y0"] for item in row
+        )
+
+        tokens = []
+
+        for item in row:
+            text = item["text"]
+
+            if self._is_superscript_word(item, baseline_y0):
+                tokens.append(f"^{text}")
+                continue
+
+            tokens.append(text)
+
+        return _compact_pdf_line(" ".join(tokens))
+
+    def _is_superscript_word(self, word: dict, baseline_y0: float) -> bool:
+        text = word["text"]
+
+        if not re.search(r"[A-Za-z0-9]", text):
+            return False
+
+        if re.search(r"[\u0400-\u04FF]", text):
+            return False
+
+        if text in {"(", ")", ";", ":", ",", "+", "-", "*", "/", "="}:
+            return False
+
+        return word["y0"] < baseline_y0 - 3.0
 
     async def _extract_image_text_safe(self, image_bytes: bytes) -> str:
         async with self.semaphore:

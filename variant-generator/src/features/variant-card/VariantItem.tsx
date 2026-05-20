@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { RotateCw, Pencil, Loader2 } from "lucide-react";
+import { AlertCircle, Loader2, Pencil, RotateCw } from "lucide-react";
 import { useState } from "react";
 import { RichEditor } from "@/features/editor/RichEditor";
 import {
@@ -12,7 +12,7 @@ import { cn } from "@/shared/lib/cn";
 interface Props {
   taskId: string;
   variantNumber: number;
-  questionOrder: number; // Q1, Q2…
+  questionOrder: number;
   item: VI;
 }
 
@@ -24,8 +24,8 @@ export function VariantItem({
 }: Props) {
   const qc = useQueryClient();
   const [localContent, setLocalContent] = useState(item.content);
+  const isFailed = item.status === "failed";
 
-  // === PATCH (редактирование) ===
   const editMutation = useMutation({
     mutationFn: (content: string) =>
       editVariantItem(item.variant_id, item.id, content),
@@ -34,7 +34,6 @@ export function VariantItem({
     },
   });
 
-  // === Regenerate ===
   const regenMutation = useMutation({
     mutationFn: () => regenerateVariantItem(item.variant_id, item.id),
     onSuccess: (updated) => {
@@ -51,15 +50,36 @@ export function VariantItem({
         </span>
 
         <div className="flex-1 min-w-0">
-          <RichEditor
-            value={localContent}
-            onChange={setLocalContent}
-            onCommit={(html) => editMutation.mutate(html)}
-            showToolbar={false}
-          />
+          {isFailed ? (
+            <div className="rounded-md border border-danger/30 bg-danger/5 px-3 py-2 text-sm text-danger">
+              <div className="flex items-start gap-2">
+                <AlertCircle size={15} className="mt-0.5 shrink-0" />
+                <div>
+                  <p className="font-medium">Не удалось сгенерировать этот пункт</p>
+                  {item.error_message && (
+                    <p className="mt-1 text-xs opacity-80">{item.error_message}</p>
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <RichEditor
+              value={localContent}
+              onChange={setLocalContent}
+              onCommit={(html) => editMutation.mutate(html)}
+              showToolbar={false}
+            />
+          )}
         </div>
 
-        <div className="shrink-0 flex items-center gap-0.5 opacity-0 group-hover/item:opacity-100 focus-within:opacity-100 transition">
+        <div
+          className={cn(
+            "shrink-0 flex items-center gap-0.5 transition",
+            isFailed
+              ? "opacity-100"
+              : "opacity-0 group-hover/item:opacity-100 focus-within:opacity-100"
+          )}
+        >
           {item.is_edited && (
             <span title="Отредактировано вручную">
               <Pencil
@@ -91,14 +111,18 @@ export function VariantItem({
 
       {editMutation.isError && (
         <p className="mt-1 ml-8 text-xs text-danger">
-          Не удалось сохранить. Попробуйте ещё раз.
+          Не удалось сохранить. Попробуйте еще раз.
+        </p>
+      )}
+      {regenMutation.isError && (
+        <p className="mt-1 ml-8 text-xs text-danger">
+          Не удалось перегенерировать. Попробуйте еще раз.
         </p>
       )}
     </div>
   );
 }
 
-/** Точечно обновляет VariantItem внутри Task в кэше React Query */
 function patchInCache(
   qc: ReturnType<typeof useQueryClient>,
   taskId: string,

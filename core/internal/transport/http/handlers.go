@@ -232,7 +232,11 @@ func (h *Handlers) ExportTask(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 	}
 
 	w.Header().Set("Content-Type", result.ContentType)
-	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, result.Filename))
+	if result.ContentDisposition != "" {
+		w.Header().Set("Content-Disposition", result.ContentDisposition)
+	} else {
+		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, result.Filename))
+	}
 	w.WriteHeader(stdhttp.StatusOK)
 	_, _ = w.Write(result.Data)
 }

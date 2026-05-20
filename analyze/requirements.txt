@@ -2,9 +2,11 @@ fastapi
 uvicorn[standard]
 python-multipart
 pymupdf
+pdfplumber
 python-docx
 pillow
 httpx
 pydantic-settings
 gigachat
 python-dotenv
+json-repair

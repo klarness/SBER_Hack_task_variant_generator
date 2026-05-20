@@ -266,12 +266,15 @@ func (r *PostgresRepository) SaveVariants(ctx context.Context, userID, taskID uu
 			if variants[i].Items[j].ID == uuid.Nil {
 				variants[i].Items[j].ID = uuid.New()
 			}
+			if variants[i].Items[j].Status == "" {
+				variants[i].Items[j].Status = domain.VariantItemStatusReady
+			}
 			variants[i].Items[j].VariantID = variants[i].ID
 
 			_, err = tx.Exec(ctx, `
-				INSERT INTO variant_items (id, variant_id, task_item_id, content, is_edited)
-				VALUES ($1, $2, $3, $4, $5)
-			`, variants[i].Items[j].ID, variants[i].ID, variants[i].Items[j].TaskItemID, variants[i].Items[j].Content, variants[i].Items[j].IsEdited)
+				INSERT INTO variant_items (id, variant_id, task_item_id, content, status, error_message, is_edited)
+				VALUES ($1, $2, $3, $4, $5, $6, $7)
+			`, variants[i].Items[j].ID, variants[i].ID, variants[i].Items[j].TaskItemID, variants[i].Items[j].Content, variants[i].Items[j].Status, variants[i].Items[j].ErrorMessage, variants[i].Items[j].IsEdited)
 			if err != nil {
 				return err
 			}
@@ -290,7 +293,7 @@ func (r *PostgresRepository) GetVariantItemForRegeneration(ctx context.Context, 
 		SELECT
 			t.id, t.user_id, t.title, t.subject, t.topic, t.task_type, t.difficulty, t.original_text, t.settings, t.status, t.error_message, t.created_at, t.updated_at,
 			ti.id, ti.task_id, ti.item_order, ti.context, ti.content, ti.created_at,
-			vi.id, vi.variant_id, vi.task_item_id, vi.content, vi.is_edited, vi.created_at, vi.updated_at
+			vi.id, vi.variant_id, vi.task_item_id, vi.content, vi.status, vi.error_message, vi.is_edited, vi.created_at, vi.updated_at
 		FROM variant_items vi
 		JOIN variants v ON v.id = vi.variant_id
 		JOIN tasks t ON t.id = v.task_id
@@ -320,6 +323,8 @@ func (r *PostgresRepository) GetVariantItemForRegeneration(ctx context.Context, 
 		&variantItem.VariantID,
 		&variantItem.TaskItemID,
 		&variantItem.Content,
+		&variantItem.Status,
+		&variantItem.ErrorMessage,
 		&variantItem.IsEdited,
 		&variantItem.CreatedAt,
 		&variantItem.UpdatedAt,
@@ -358,9 +363,13 @@ func (r *PostgresRepository) UpdateVariantItem(ctx context.Context, userID, vari
 
 	tag, err := tx.Exec(ctx, `
 		UPDATE variant_items
-		SET content = $1, is_edited = $2, updated_at = now()
-		WHERE variant_id = $3 AND id = $4
-	`, content, isEdited, variantID, itemID)
+		SET content = $1,
+			status = $2,
+			error_message = '',
+			is_edited = $3,
+			updated_at = now()
+		WHERE variant_id = $4 AND id = $5
+	`, content, domain.VariantItemStatusReady, isEdited, variantID, itemID)
 	if err != nil {
 		return err
 	}
@@ -437,7 +446,7 @@ func (r *PostgresRepository) listVariants(ctx context.Context, taskID uuid.UUID)
 
 func (r *PostgresRepository) listVariantItems(ctx context.Context, variantID uuid.UUID) ([]domain.VariantItem, error) {
 	rows, err := r.pool.Query(ctx, `
-		SELECT vi.id, vi.variant_id, vi.task_item_id, vi.content, vi.is_edited, vi.created_at, vi.updated_at
+		SELECT vi.id, vi.variant_id, vi.task_item_id, vi.content, vi.status, vi.error_message, vi.is_edited, vi.created_at, vi.updated_at
 		FROM variant_items vi
 		JOIN task_items ti ON ti.id = vi.task_item_id
 		WHERE vi.variant_id = $1
@@ -451,7 +460,7 @@ func (r *PostgresRepository) listVariantItems(ctx context.Context, variantID uui
 	var items []domain.VariantItem
 	for rows.Next() {
 		var item domain.VariantItem
-		err = rows.Scan(&item.ID, &item.VariantID, &item.TaskItemID, &item.Content, &item.IsEdited, &item.CreatedAt, &item.UpdatedAt)
+		err = rows.Scan(&item.ID, &item.VariantID, &item.TaskItemID, &item.Content, &item.Status, &item.ErrorMessage, &item.IsEdited, &item.CreatedAt, &item.UpdatedAt)
 		if err != nil {
 			return nil, err
 		}

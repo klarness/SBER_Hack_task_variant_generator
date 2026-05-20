@@ -9,6 +9,7 @@ class TextNormalizer:
         text = TextNormalizer._replace_unicode_punctuation(text)
         text = TextNormalizer._remove_page_meta(text)
         text = TextNormalizer._remove_ocr_artifacts(text)
+        text = TextNormalizer._normalize_choice_markers(text)
 
         text = re.sub(r"-\n(?=\w)", "", text)
         text = re.sub(r"\r\n?", "\n", text)
@@ -66,4 +67,22 @@ class TextNormalizer:
         ]
         for pattern in artifact_patterns:
             text = re.sub(pattern, " ", text)
+        return text
+
+    @staticmethod
+    def _normalize_choice_markers(text: str) -> str:
+        replacements = {
+            "A": "А",
+            "B": "В",
+            "V": "В",
+        }
+
+        for source, target in replacements.items():
+            text = re.sub(
+                rf"(^|[\s;:]){source}(?=[.)]\s)",
+                rf"\1{target}",
+                text,
+                flags=re.MULTILINE,
+            )
+
         return text

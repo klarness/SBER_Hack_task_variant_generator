@@ -16,6 +16,13 @@ const (
 	TaskStatusFailed     TaskStatus = "failed"
 )
 
+type VariantItemStatus string
+
+const (
+	VariantItemStatusReady  VariantItemStatus = "ready"
+	VariantItemStatusFailed VariantItemStatus = "failed"
+)
+
 type Task struct {
 	ID           uuid.UUID       `json:"id"`
 	UserID       uuid.UUID       `json:"user_id"`
@@ -52,13 +59,15 @@ type Variant struct {
 }
 
 type VariantItem struct {
-	ID         uuid.UUID `json:"id"`
-	VariantID  uuid.UUID `json:"variant_id"`
-	TaskItemID uuid.UUID `json:"task_item_id"`
-	Content    string    `json:"content"`
-	IsEdited   bool      `json:"is_edited"`
-	CreatedAt  time.Time `json:"created_at"`
-	UpdatedAt  time.Time `json:"updated_at"`
+	ID           uuid.UUID         `json:"id"`
+	VariantID    uuid.UUID         `json:"variant_id"`
+	TaskItemID   uuid.UUID         `json:"task_item_id"`
+	Content      string            `json:"content"`
+	Status       VariantItemStatus `json:"status"`
+	ErrorMessage string            `json:"error_message,omitempty"`
+	IsEdited     bool              `json:"is_edited"`
+	CreatedAt    time.Time         `json:"created_at"`
+	UpdatedAt    time.Time         `json:"updated_at"`
 }
 
 type UploadedFile struct {
@@ -124,7 +133,8 @@ type ValidateRequest struct {
 }
 
 type ExportResult struct {
-	Filename    string
-	ContentType string
-	Data        []byte
+	Filename           string
+	ContentDisposition string
+	ContentType        string
+	Data               []byte
 }

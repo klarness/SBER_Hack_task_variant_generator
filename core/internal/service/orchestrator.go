@@ -140,7 +140,7 @@ func (o *Orchestrator) runGeneration(taskID uuid.UUID, req StartGenerationReques
 		return
 	}
 
-	variants, err := o.generateVariants(ctx, task, req.VariantCount)
+	variants, failedItems, err := o.generateVariants(ctx, task, req.VariantCount)
 	if err != nil {
 		fail(err)
 		return
@@ -150,7 +150,11 @@ func (o *Orchestrator) runGeneration(taskID uuid.UUID, req StartGenerationReques
 		fail(err)
 		return
 	}
-	if err = o.repo.UpdateTaskStatus(ctx, req.UserID, taskID, domain.TaskStatusDone, ""); err != nil {
+	errorMessage := ""
+	if failedItems > 0 {
+		errorMessage = fmt.Sprintf("%d variant items failed; regenerate them manually", failedItems)
+	}
+	if err = o.repo.UpdateTaskStatus(ctx, req.UserID, taskID, domain.TaskStatusDone, errorMessage); err != nil {
 		fail(err)
 	}
 	o.logger.InfoContext(ctx, "task generation completed",
@@ -158,13 +162,11 @@ func (o *Orchestrator) runGeneration(taskID uuid.UUID, req StartGenerationReques
 		"task_id", taskID.String(),
 		"variants_count", len(variants),
 		"task_items_count", len(task.TaskItems),
+		"failed_variant_items", failedItems,
 	)
 }
 
-func (o *Orchestrator) generateVariants(ctx context.Context, task *domain.Task, variantCount int) ([]domain.Variant, error) {
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
+func (o *Orchestrator) generateVariants(ctx context.Context, task *domain.Task, variantCount int) ([]domain.Variant, int, error) {
 	totalJobs := variantCount * len(task.TaskItems)
 	o.logger.InfoContext(ctx, "variant fan-out started",
 		"user_id", task.UserID.String(),
@@ -200,19 +202,30 @@ func (o *Orchestrator) generateVariants(ctx context.Context, task *domain.Task, 
 	}()
 
 	grouped := make(map[int][]domain.VariantItem, variantCount)
+	failedItems := 0
 	for result := range results {
 		if result.Err != nil {
-			cancel()
-			o.logger.ErrorContext(ctx, "variant fan-in failed",
+			failedItems++
+			o.logger.WarnContext(ctx, "variant fan-in recorded failed item",
 				"user_id", task.UserID.String(),
 				"task_id", task.ID.String(),
 				"variant_number", result.VariantNumber,
 				"task_item_id", result.TaskItemID.String(),
 				"error", result.Err,
 			)
-			return nil, result.Err
+			grouped[result.VariantNumber] = append(grouped[result.VariantNumber], domain.VariantItem{
+				TaskItemID:   result.TaskItemID,
+				Content:      "",
+				Status:       domain.VariantItemStatusFailed,
+				ErrorMessage: result.Err.Error(),
+				IsEdited:     false,
+			})
+			continue
 		}
 		result.Item.TaskItemID = result.TaskItemID
+		if result.Item.Status == "" {
+			result.Item.Status = domain.VariantItemStatusReady
+		}
 		grouped[result.VariantNumber] = append(grouped[result.VariantNumber], *result.Item)
 	}
 
@@ -228,8 +241,9 @@ func (o *Orchestrator) generateVariants(ctx context.Context, task *domain.Task, 
 		"task_id", task.ID.String(),
 		"variant_count", len(variants),
 		"jobs_count", totalJobs,
+		"failed_variant_items", failedItems,
 	)
-	return variants, nil
+	return variants, failedItems, nil
 }
 
 func (o *Orchestrator) generateAndValidate(ctx context.Context, task *domain.Task, sourceItem domain.TaskItem, variantNumber int) (*domain.VariantItem, error) {

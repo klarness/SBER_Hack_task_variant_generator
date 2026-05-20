@@ -112,6 +112,8 @@ func (s *TaskService) EditVariantItem(ctx context.Context, userID, variantID, it
 	}
 
 	variantItem.Content = content
+	variantItem.Status = domain.VariantItemStatusReady
+	variantItem.ErrorMessage = ""
 	variantItem.IsEdited = true
 	s.logger.InfoContext(ctx, "variant item manual edit completed",
 		"user_id", userID.String(),
@@ -169,6 +171,7 @@ func (s *TaskService) RegenerateVariantItem(ctx context.Context, userID, variant
 				TaskItemID: taskItem.ID,
 				Original:   taskItem.Content,
 				Generated:  item.Content,
+				Settings:   task.Settings,
 			})
 			if err != nil {
 				return err
@@ -221,6 +224,8 @@ func (s *TaskService) RegenerateVariantItem(ctx context.Context, userID, variant
 	}
 
 	variantItem.Content = generated.Content
+	variantItem.Status = domain.VariantItemStatusReady
+	variantItem.ErrorMessage = ""
 	variantItem.IsEdited = false
 	s.logger.InfoContext(ctx, "variant item regeneration completed",
 		"user_id", userID.String(),

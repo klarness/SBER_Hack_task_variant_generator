@@ -55,9 +55,25 @@ export async function exportTask(id: string): Promise<ExportResult> {
   const blob = await res.blob();
 
   const disposition = res.headers.get("Content-Disposition") || "";
-  const match = disposition.match(/filename="?([^"]+)"?/);
-  const filename = match?.[1] || `export-${id}`;
+  const filename = filenameFromDisposition(disposition) || `export-${id}.docx`;
   return { filename, blob };
+}
+
+function filenameFromDisposition(disposition: string): string | undefined {
+  const utf8Match = disposition.match(/filename\*=UTF-8''([^;]+)/i);
+  if (utf8Match?.[1]) {
+    try {
+      return decodeURIComponent(utf8Match[1]);
+    } catch {
+      return utf8Match[1];
+    }
+  }
+
+  const quotedMatch = disposition.match(/filename="([^"]+)"/i);
+  if (quotedMatch?.[1]) return quotedMatch[1];
+
+  const plainMatch = disposition.match(/filename=([^;]+)/i);
+  return plainMatch?.[1]?.trim();
 }
 
 export function downloadBlob(result: ExportResult) {

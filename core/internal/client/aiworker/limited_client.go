@@ -58,11 +58,11 @@ func (c *LimitedClient) Validate(ctx context.Context, req domain.ValidateRequest
 }
 
 func (c *LimitedClient) Export(ctx context.Context, task *domain.Task) (*domain.ExportResult, error) {
-	release, err := c.acquire(ctx, "export")
-	if err != nil {
-		return nil, err
-	}
-	defer release()
+	c.logger.InfoContext(ctx, "ai worker export bypasses llm permit",
+		"operation", "export",
+		"concurrency", c.concurrency,
+		"in_flight", len(c.permits),
+	)
 	return c.next.Export(ctx, task)
 }
 

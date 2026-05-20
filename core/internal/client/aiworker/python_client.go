@@ -151,6 +151,7 @@ func (c *PythonClient) Generate(ctx context.Context, req domain.GenerateRequest)
 	return &domain.VariantItem{
 		TaskItemID: req.TaskItemID,
 		Content:    resp.Content,
+		Status:     domain.VariantItemStatusReady,
 	}, nil
 }
 
@@ -235,15 +236,17 @@ func (c *PythonClient) Export(ctx context.Context, task *domain.Task) (*domain.E
 	if filename == "" {
 		filename = "task-export.docx"
 	}
+	contentDisposition := resp.Header.Get("Content-Disposition")
 	contentType := resp.Header.Get("Content-Type")
 	if contentType == "" {
 		contentType = "application/octet-stream"
 	}
 
 	result := &domain.ExportResult{
-		Filename:    filename,
-		ContentType: contentType,
-		Data:        data,
+		Filename:           filename,
+		ContentDisposition: contentDisposition,
+		ContentType:        contentType,
+		Data:               data,
 	}
 	c.logger.InfoContext(ctx, "ai export request completed",
 		"user_id", task.UserID.String(),

@@ -1,9 +1,9 @@
-import io
+import html
 import json
 import os
+import re
 from typing import Any
 
-from docx import Document
 from fastapi import Body, FastAPI, File, Form, HTTPException, Response, UploadFile
 
 from analyze.schemas.response import (
@@ -14,6 +14,11 @@ from analyze.schemas.response import (
     ParseResponse,
     ValidateRequest,
     ValidateResponse,
+)
+from analyze.services.export.docx_exporter import (
+    DOCX_CONTENT_TYPE,
+    build_task_docx,
+    content_disposition,
 )
 from analyze.services.llm.client import GigaChatClient
 from analyze.services.parsing.extraction import FileExtractionService
@@ -34,8 +39,8 @@ async def healthz():
 
 @app.post("/parse", response_model=ParseResponse)
 async def parse(file: UploadFile = File(...)):
-    await file.seek(0, io.SEEK_END)
-    size = await file.tell()
+    content = await file.read()
+    size = len(content)
     await file.seek(0)
 
     if size > MAX_PARSE_FILE_SIZE:
@@ -101,7 +106,7 @@ async def generate(request: GenerateRequest):
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"GigaChat generate failed: {exc}") from exc
 
-    return GenerateResponse(content=content)
+    return GenerateResponse(content=_plain_text(content))
 
 
 @app.post("/validate", response_model=ValidateResponse)
@@ -116,31 +121,17 @@ async def validate(request: ValidateRequest):
 
 @app.post("/export")
 async def export(task: dict[str, Any] = Body(...)):
-    document = Document()
-    title = task.get("title") or "Task variants"
-    document.add_heading(title, level=1)
-
-    original_text = task.get("original_text") or ""
-    if original_text:
-        document.add_heading("Original task", level=2)
-        document.add_paragraph(original_text)
-
-    for variant in task.get("variants") or []:
-        variant_number = variant.get("variant_number", "")
-        document.add_heading(f"Variant {variant_number}", level=2)
-        for index, item in enumerate(variant.get("items") or [], start=1):
-            document.add_paragraph(f"{index}. {item.get('content', '')}")
-
-    output = io.BytesIO()
-    document.save(output)
-    filename = f"{title[:40].strip() or 'task'}-variants.docx"
+    try:
+        data, filename, ascii_filename = build_task_docx(task)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"DOCX export failed: {exc}") from exc
 
     return Response(
-        content=output.getvalue(),
-        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        content=data,
+        media_type=DOCX_CONTENT_TYPE,
         headers={
-            "X-Filename": filename,
-            "Content-Disposition": f'attachment; filename="{filename}"',
+            "X-Filename": ascii_filename,
+            "Content-Disposition": content_disposition(filename, ascii_filename),
         },
     )
 
@@ -165,7 +156,7 @@ def _parse_llm_items(llm_result: dict[str, Any]) -> list[AnalyzeItem]:
         if not isinstance(raw_item, dict):
             raise HTTPException(status_code=502, detail="GigaChat analyze item must be an object")
 
-        content = str(raw_item.get("content") or "").strip()
+        content = _first_text(raw_item, "content", "question", "text", "task", "prompt")
         if not content:
             raise HTTPException(status_code=502, detail="GigaChat analyze item content is empty")
 
@@ -177,10 +168,64 @@ def _parse_llm_items(llm_result: dict[str, Any]) -> list[AnalyzeItem]:
         items.append(
             AnalyzeItem(
                 order=order,
-                context=str(raw_item.get("context") or ""),
+                context=_first_text(raw_item, "context", "common_context", "instruction"),
                 content=content,
             )
         )
 
     items.sort(key=lambda item: item.order)
     return items
+
+
+def _first_text(source: dict[str, Any], *keys: str) -> str:
+    for key in keys:
+        value = source.get(key)
+
+        if isinstance(value, str) and value.strip():
+            return _plain_text(value)
+
+    return ""
+
+
+def _plain_text(value: str) -> str:
+    text = html.unescape(value)
+
+    replacements = [
+        (r"(?is)<\s*br\s*/?\s*>", "\n"),
+        (r"(?is)<\s*/\s*p\s*>", "\n"),
+        (r"(?is)<\s*li[^>]*>", ""),
+        (r"(?is)<\s*/\s*li\s*>", "; "),
+        (r"(?is)<\s*/?\s*(ul|ol|p|div|span)[^>]*>", " "),
+        (r"(?is)<[^>]+>", ""),
+    ]
+
+    for pattern, replacement in replacements:
+        text = re.sub(pattern, replacement, text)
+
+    text = re.sub(r"\s+([,.;:!?])", r"\1", text)
+    text = re.sub(r";\s*([.;])", r"\1", text)
+    text = re.sub(r";\s*$", "", text)
+    text = re.sub(r"[ \t]{2,}", " ", text)
+    text = re.sub(r" *\n *", "\n", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    text = _normalize_choice_markers(text)
+
+    return text.strip()
+
+
+def _normalize_choice_markers(text: str) -> str:
+    replacements = {
+        "A": "А",
+        "B": "В",
+        "V": "В",
+    }
+
+    for source, target in replacements.items():
+        text = re.sub(
+            rf"(^|[\s;:]){source}(?=[.)]\s)",
+            rf"\1{target}",
+            text,
+            flags=re.MULTILINE,
+        )
+
+    return text

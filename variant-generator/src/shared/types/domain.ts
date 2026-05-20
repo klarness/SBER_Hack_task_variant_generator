@@ -35,6 +35,8 @@ export interface VariantItem {
   variant_id: string;
   task_item_id: string; // ссылка на исходный TaskItem
   content: string;
+  status?: "ready" | "failed";
+  error_message?: string;
   is_edited: boolean;
   created_at: string;
   updated_at: string;
