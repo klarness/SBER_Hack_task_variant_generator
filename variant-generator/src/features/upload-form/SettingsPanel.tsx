@@ -89,7 +89,7 @@ export function SettingsPanel({
     <div className="flex flex-col gap-6">
       <section>
         <h3 className="text-xs font-semibold text-ink-500 uppercase tracking-wider mb-3">
-          Параметры мультипликации
+          Параметры генерации
         </h3>
         <Slider
           label="Количество вариантов"
@@ -102,7 +102,7 @@ export function SettingsPanel({
 
       <section>
         <h3 className="text-xs font-semibold text-ink-500 uppercase tracking-wider mb-3">
-          Стратегии изменения
+          Изменения
         </h3>
         <div className="flex flex-col gap-3">
           {STRATEGIES.map((s) => (
@@ -121,7 +121,7 @@ export function SettingsPanel({
         <h3 className="text-xs font-semibold text-ink-500 uppercase tracking-wider mb-3">
           Типы чисел
         </h3>
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-1 gap-2">
           {NUMBER_TYPES.map((type) => (
             <Checkbox
               key={type.key}
@@ -143,7 +143,7 @@ export function SettingsPanel({
           onChange={(next) =>
             onSettingsChange({ ...settings, locked_parts: next })
           }
-          placeholder="Например: 'формула Виета', Enter для добавления"
+          placeholder="Например: 'формула Виета'"
         />
         <p className="mt-1.5 text-xs text-ink-500">
           Эти слова и фразы алгоритм не будет менять
