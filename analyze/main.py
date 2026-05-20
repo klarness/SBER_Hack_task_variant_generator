@@ -1,5 +1,6 @@
 import io
 import json
+import os
 from typing import Any
 
 from docx import Document
@@ -20,6 +21,8 @@ from analyze.services.parsing.normalizer import TextNormalizer
 
 app = FastAPI(title="Analyze Service")
 
+MAX_PARSE_FILE_SIZE = int(os.getenv("MAX_PARSE_FILE_SIZE", str(32 * 1024 * 1024)))
+
 extraction_service = FileExtractionService()
 llm_client = GigaChatClient()
 
@@ -31,6 +34,16 @@ async def healthz():
 
 @app.post("/parse", response_model=ParseResponse)
 async def parse(file: UploadFile = File(...)):
+    await file.seek(0, io.SEEK_END)
+    size = await file.tell()
+    await file.seek(0)
+
+    if size > MAX_PARSE_FILE_SIZE:
+        raise HTTPException(
+            status_code=413,
+            detail=f"File too large: {size} bytes, max allowed is {MAX_PARSE_FILE_SIZE} bytes",
+        )
+
     raw_text = await extraction_service.parse(file)
     normalized_text = TextNormalizer.normalize(raw_text)
     return ParseResponse(raw_text=raw_text, normalized_text=normalized_text)

@@ -1,45 +1,162 @@
 import base64
-import asyncio
+import random
+import imghdr
 import json
 import os
 import re
 import time
+import uuid
+import asyncio
 from typing import Any
 
-from dotenv import load_dotenv
-from gigachat import GigaChat
-
 from analyze.services.llm.prompts.extraction_prompt import EXTRACTION_PROMPT
+import httpx
+from dotenv import load_dotenv
 
 load_dotenv()
+
+GIGACHAT_API_URL = "https://gigachat.devices.sberbank.ru/api/v1/chat/completions"
+GIGACHAT_AUTH_URL = "https://ngw.devices.sberbank.ru:9443/api/v2/oauth"
+
+GIGACHAT_CLIENT_ID = os.getenv("GIGACHAT_CLIENT_ID")
+GIGACHAT_CLIENT_SECRET = os.getenv("GIGACHAT_CLIENT_SECRET")
+GIGACHAT_SCOPE = os.getenv("GIGACHAT_SCOPE", "GIGACHAT_API_PERS")
+
+if not (GIGACHAT_CLIENT_ID and GIGACHAT_CLIENT_SECRET):
+    raise ValueError(
+        "Не указаны GIGACHAT_CLIENT_ID/GIGACHAT_CLIENT_SECRET в переменных окружении."
+    )
 
 
 class GigaChatClient:
     def __init__(self):
-        self.credentials: str | None = None
         self.access_token: str | None = None
-        self.token_expires_at = 0.0
-        self.token_lock = asyncio.Lock()
-        self.request_limiter = asyncio.Semaphore(int(os.getenv("GIGACHAT_CONCURRENCY", "1")))
-        self.scope = os.getenv("GIGACHAT_SCOPE", "GIGACHAT_API_PERS")
-        self.model = os.getenv("GIGACHAT_MODEL", "GigaChat")
-        self.vision_model = os.getenv("GIGACHAT_VISION_MODEL", self.model)
-        self.timeout = float(os.getenv("GIGACHAT_TIMEOUT", "60.0"))
-        self.verify_ssl_certs = os.getenv("GIGACHAT_VERIFY_SSL_CERTS", "true").lower() not in {
-            "0",
-            "false",
-            "no",
+        self.token_expires_at: float = 0.0
+        self.request_timeout = int(os.getenv("GIGACHAT_TIMEOUT", "300"))
+        self.model = os.getenv("GIGACHAT_MODEL", "GigaChat-2-Max")
+        self.vision_model = os.getenv("GIGACHAT_VISION_MODEL", self.model )
+        self.verify_ssl_certs = os.getenv("GIGACHAT_VERIFY_SSL_CERTS", "true").lower() not in {"0", "false", "no"}
+
+        self.client_id = GIGACHAT_CLIENT_ID
+        self.client_secret = GIGACHAT_CLIENT_SECRET
+
+    async def authenticate(self) -> None:
+        print("AUTH HEADER =", self._build_authorization_header())
+        print("CLIENT_ID RAW =", repr(self.client_id))
+        print("CLIENT_SECRET RAW =", repr(self.client_secret))
+        print("CLIENT_SECRET EXISTS =", bool(self.client_secret))
+
+
+        headers = {
+            "Authorization": self._build_authorization_header(),
+            "RqUID": str(uuid.uuid4()),
+            "Content-Type": "application/x-www-form-urlencoded",
         }
 
-    async def analyze_task(
-        self,
-        *,
-        original_text: str,
-        title: str,
-        settings: dict[str, Any],
-    ) -> dict[str, Any]:
+        data = {"grant_type": "client_credentials", "scope": GIGACHAT_SCOPE}
+
+        async with httpx.AsyncClient(timeout=120, verify=self.verify_ssl_certs) as client:
+            resp = await client.post(GIGACHAT_AUTH_URL, headers=headers, data=data)
+
+        if resp.status_code != 200:
+            raise Exception(f"GigaChat auth error: {resp.status_code} — {resp.text}")
+
+        body = resp.json()
+        token = body.get("access_token")
+        expires_in = body.get("expires_in") or body.get("expires") or 3600
+        try:
+            expires_in = int(expires_in)
+        except Exception:
+            expires_in = 3600
+
+        self.access_token = token
+        self.token_expires_at = time.time() + max(0, expires_in - 30)
+
+        if not self.access_token:
+            raise Exception("Не удалось получить access_token.")
+        
+
+    def _build_authorization_header(self) -> str:
+        if not self.client_secret:
+            raise ValueError("Не задан GIGACHAT_CLIENT_SECRET (Authorization Key)")
+
+        return f"Basic {self.client_secret.strip()}"
+
+    # def _looks_like_base64_credentials(self, token: str) -> bool:
+    #     try:
+    #         decoded = base64.b64decode(token, validate=True).decode("utf-8")
+    #         return ":" in decoded
+    #     except Exception:
+    #         return False
+
+    async def _ensure_token(self) -> None:
+        if not self.access_token or time.time() > (self.token_expires_at - 10):
+            await self.authenticate()
+
+    def _guess_image_type(self, image_bytes: bytes) -> str:
+        t = imghdr.what(None, image_bytes)
+        if t == "jpeg":
+            return "jpeg"
+        if t in {"png", "gif", "bmp", "tiff", "webp"}:
+            return t
+        return "png"
+
+    async def upload_image(self, image_bytes: bytes, filename: str, content_type: str) -> str:
+        await self._ensure_token()
+        headers = {"Authorization": f"Bearer {self.access_token}"}
+
+        data = {
+            "purpose": "general"
+        }
+
+        async with httpx.AsyncClient(timeout=self.request_timeout, verify=self.verify_ssl_certs) as client:
+            files = {"file": (filename, image_bytes, content_type)}
+
+            resp = await client.post(
+                "https://gigachat.devices.sberbank.ru/api/v1/files",
+                headers=headers,
+                data=data,
+                files=files
+            )
+
+        if resp.status_code != 200:
+            raise Exception(f"GigaChat file upload error: {resp.status_code} — {resp.text}")
+
+        result = resp.json()
+
+        file_id = result.get("id") or result.get("file", {}).get("id")
+        if not file_id:
+            raise Exception(f"No file id in response: {result}")
+
+        return file_id
+
+    async def extract_text_from_image(self, image_bytes: bytes) -> str:
+        image_type = self._guess_image_type(image_bytes)
+        filename = f"image.{image_type}"
+        content_type = f"image/{image_type}"
+
+        file_id = await self.upload_image(image_bytes, filename, content_type)
+
+        result = await self._chat_text(
+            system=(
+                "Ты OCR-система. "
+                "Твоя задача — дословно переписать текст с изображения. "
+                "НЕ добавляй, НЕ исправляй, НЕ интерпретируй."
+            ),
+            user="Перепиши текст с изображения дословно.",
+            model=self.vision_model,
+            attachments=[file_id],
+            temperature=0
+        )
+
+        if not result or not result.strip():
+            raise ValueError("Empty OCR result from GigaChat")
+
+        return result.strip()
+
+    async def analyze_task(self, *, original_text: str, title: str, settings: dict[str, Any]) -> dict[str, Any]:
         settings = normalize_generation_settings(settings)
-        return await self.chat_json(
+        return await self._chat_json(
             system=(
                 "Ты анализируешь школьные задания для генератора вариантов. "
                 "Верни только валидный JSON без markdown и пояснений."
@@ -66,15 +183,38 @@ class GigaChatClient:
                 f"Параметры мультипликации:\n{render_generation_settings(settings)}\n"
                 f"Исходный текст:\n{original_text}"
             ),
+            temperature=0,
         )
 
     async def generate_variant(self, request: dict[str, Any]) -> str:
         settings = normalize_generation_settings(request.get("settings") or {})
         request = {**request, "settings": settings}
-        response = await self.chat_json(
+
+        strategies = [
+            "Полностью измени сюжет (другой жизненный контекст)",
+            "Замени предметную область (математика → покупки / спорт / транспорт)",
+            "Измени структуру задачи (перестрой условие)",
+            "Замени объекты на принципиально другие",
+            "Сделай обратную постановку задачи"
+        ]
+
+        strategy = random.choice(strategies)
+
+        response = await self._chat_json(
             system=(
-                "Ты генерируешь новый вариант школьного задания. "
-                "Верни только валидный JSON без markdown и пояснений."
+            "Ты генератор вариантов задач. "
+            f"Обязательная стратегия генерации: {strategy}"
+            "Каждый раз ты ОБЯЗАН создавать заметно отличающийся вариант задания.\n\n"
+            "ВАЖНО:\n"
+            "- нельзя менять только числа\n"
+            "- нельзя делать минимальные правки\n"
+            "- каждый новый вариант должен использовать ДРУГОЙ способ переформулировки:\n"
+            "  * смена сюжета\n"
+            "  * смена контекста (жизненная ситуация)\n"
+            "  * смена структуры условия\n"
+            "  * замена объектов на принципиально другие\n"
+            "  * изменение порядка логики задачи\n\n"
+            "Если вариант похож на исходный — он считается ОШИБКОЙ."
             ),
             user=(
                 "Сгенерируй альтернативное задание той же темы, типа и сложности.\n"
@@ -88,7 +228,7 @@ class GigaChatClient:
                 f"Параметры мультипликации:\n{render_generation_settings(settings)}\n"
                 f"Входные данные JSON:\n{json.dumps(request, ensure_ascii=False)}"
             ),
-            temperature=0.4,
+            temperature=0.7,
         )
         content = response.get("content")
         if not isinstance(content, str) or not content.strip():
@@ -98,7 +238,7 @@ class GigaChatClient:
     async def validate_variant(self, request: dict[str, Any]) -> bool:
         settings = normalize_generation_settings(request.get("settings") or {})
         request = {**request, "settings": settings}
-        response = await self.chat_json(
+        response = await self._chat_json(
             system=(
                 "Ты проверяешь качество сгенерированного варианта задания. "
                 "Верни только валидный JSON без markdown и пояснений."
@@ -120,115 +260,93 @@ class GigaChatClient:
                 f"Параметры мультипликации:\n{render_generation_settings(settings)}\n"
                 f"Данные JSON:\n{json.dumps(request, ensure_ascii=False)}"
             ),
+            temperature=0,
         )
         valid = response.get("valid")
         if not isinstance(valid, bool):
             raise ValueError("GigaChat response does not contain boolean valid.")
         return valid
 
-    async def extract_text_from_image(self, image_bytes: bytes) -> str:
-        image_base64 = base64.b64encode(image_bytes).decode()
-        return await self.chat_text(
-            system=EXTRACTION_PROMPT,
-            user=[
-                {"type": "text", "text": "Извлеки текст"},
-                {
-                    "type": "image_url",
-                    "image_url": {"url": f"data:image/png;base64,{image_base64}"},
-                },
-            ],
-            model=self.vision_model,
-        )
-
-    async def chat_json(
+    async def _chat_json(
         self,
         *,
         system: str,
         user: str | list[dict[str, Any]],
         temperature: float = 0,
     ) -> dict[str, Any]:
-        content = await self.chat_text(system=system, user=user, temperature=temperature)
-        return parse_json_object(content)
+        content = await self._chat_text(system=system, user=user, temperature=temperature)
+        return self._parse_json_object(content)
 
-    async def chat_text(
+    async def _chat_text(
         self,
         *,
         system: str,
-        user: str | list[dict[str, Any]],
+        user: str,
         model: str | None = None,
         temperature: float = 0,
+        attachments: list[str] | None = None,
     ) -> str:
+        messages = [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ]
+
         payload = {
             "model": model or self.model,
-            "messages": [
-                {"role": "system", "content": system},
-                {"role": "user", "content": user},
-            ],
+            "messages": messages,
             "temperature": temperature,
         }
+        if attachments is not None:
+            payload["attachments"] = attachments
+        return await self._request_chat(payload)
 
-        async with self.request_limiter:
-            token = await self._access_token()
+    async def _request_chat(self, payload: dict[str, Any]) -> str:
+        await self._ensure_token()
+        headers = {"Authorization": f"Bearer {self.access_token}", "Content-Type": "application/json"}
 
-            async with GigaChat(
-                access_token=token,
-                scope=self.scope,
-                timeout=self.timeout,
-                verify_ssl_certs=self.verify_ssl_certs,
-            ) as giga:
-                response = await giga.achat(payload)
-
-        return response.choices[0].message.content
-
-    async def _access_token(self) -> str:
-        if self.access_token and time.time() < self.token_expires_at:
-            return self.access_token
-
-        async with self.token_lock:
-            if self.access_token and time.time() < self.token_expires_at:
-                return self.access_token
-
-            async with GigaChat(
-                credentials=self._credentials(),
-                scope=self.scope,
-                timeout=self.timeout,
-                verify_ssl_certs=self.verify_ssl_certs,
-            ) as giga:
-                token = await giga.aget_token()
-
-            if token is None or not token.access_token:
-                raise ValueError("GigaChat did not return access token.")
-
-            self.access_token = token.access_token
-            self.token_expires_at = float(token.expires_at) / 1000 - 60
-            return self.access_token
-
-    def _resolve_credentials(self) -> str:
-        credentials = os.getenv("GIGACHAT_CREDENTIALS") or os.getenv("GIGACHAT_AUTHORIZATION_KEY")
-        if credentials:
-            return credentials.removeprefix("Basic ").strip()
-
-        client_secret = os.getenv("GIGACHAT_CLIENT_SECRET")
-        if client_secret:
-            # In the current .env this value is already the Authorization Key
-            # from GigaChat Studio. Detect this shape and use it directly.
+        attempts = 0
+        while attempts < 2:
+            attempts += 1
             try:
-                decoded = base64.b64decode(client_secret).decode()
-                if ":" in decoded:
-                    return client_secret.strip()
-            except Exception:
-                pass
+                async with httpx.AsyncClient(timeout=self.request_timeout, verify=self.verify_ssl_certs) as client:
+                    resp = await client.post(GIGACHAT_API_URL, headers=headers, json=payload)
+            except httpx.RequestError as exc:
+                if attempts < 2:
+                    await asyncio.sleep(1)
+                    continue
+                raise
 
-        client_id = os.getenv("GIGACHAT_CLIENT_ID")
-        if client_id and client_secret:
-            return base64.b64encode(f"{client_id}:{client_secret}".encode()).decode()
+            if resp.status_code == 401 and attempts == 1:
+                self.access_token = None
+                await self._ensure_token()
+                headers["Authorization"] = f"Bearer {self.access_token}"
+                continue
 
-        raise ValueError("Set GIGACHAT_CREDENTIALS or GIGACHAT_AUTHORIZATION_KEY.")
+            if resp.status_code != 200:
+                raise Exception(f"GigaChat chat error: {resp.status_code} — {resp.text}")
 
-    def _credentials(self) -> str:
-        if not self.credentials:
-            self.credentials = self._resolve_credentials()
-        return self.credentials
+            try:
+                return resp.json()["choices"][0]["message"]["content"]
+            except (KeyError, IndexError, ValueError) as e:
+                raise Exception(f"Ошибка в структуре ответа GigaChat: {e}")
+
+    def _parse_json_object(self, content: str) -> dict[str, Any]:
+        cleaned = content.strip()
+        cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned)
+        cleaned = re.sub(r"\s*```$", "", cleaned)
+
+        try:
+            value = json.loads(cleaned)
+        except json.JSONDecodeError:
+            start = cleaned.find("{")
+            end = cleaned.rfind("}")
+            if start == -1 or end == -1 or end <= start:
+                raise
+            value = json.loads(cleaned[start : end + 1])
+
+        if not isinstance(value, dict):
+            raise ValueError("Expected JSON object from GigaChat.")
+        return value
 
 
 def normalize_generation_settings(settings: dict[str, Any] | None) -> dict[str, Any]:
@@ -298,8 +416,8 @@ def render_generation_settings(settings: dict[str, Any]) -> str:
         "reorder_enumeration": "изменять порядок перечисления условий, объектов или действий",
         "synonymize_non_key_wording": "синонимически заменять неключевые формулировки",
         "replace_context": "заменять ситуацию или пример при сохранении логики",
-        "change_names": "изменять имена, названия и обозначения",
-        "change_units": "изменять единицы измерения без изменения сложности",
+        "change_names": "заменять имена, названия и обозначения",
+        "change_units": "заменять единицы измерения без изменения сложности",
         "reorder_steps": "переставлять шаги в многошаговой инструкции, если это не ломает логику",
     }
     selected = [
@@ -315,7 +433,6 @@ def render_generation_settings(settings: dict[str, Any]) -> str:
             f"- диапазон чисел: {settings.get('number_range')};",
             f"- сохранять сложность: {'да' if settings.get('preserve_difficulty') else 'нет'};",
             f"- запрет на изменение частей условия: {', '.join(locked_parts) if locked_parts else 'не задан'};",
-            f"- проверять совпадение ответов между вариантами: {'да' if settings.get('check_answer_uniqueness') else 'нет'};",
             "- не менять ключевые математические/предметные связи и не добавлять решение в текст задания.",
         ]
     )
@@ -339,22 +456,3 @@ def _bool(value: Any, default: bool) -> bool:
     if isinstance(value, str):
         return value.lower() in {"1", "true", "yes", "y", "да"}
     return bool(value)
-
-
-def parse_json_object(content: str) -> dict[str, Any]:
-    cleaned = content.strip()
-    cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned)
-    cleaned = re.sub(r"\s*```$", "", cleaned)
-
-    try:
-        value = json.loads(cleaned)
-    except json.JSONDecodeError:
-        start = cleaned.find("{")
-        end = cleaned.rfind("}")
-        if start == -1 or end == -1 or end <= start:
-            raise
-        value = json.loads(cleaned[start : end + 1])
-
-    if not isinstance(value, dict):
-        raise ValueError("Expected JSON object from GigaChat.")
-    return value

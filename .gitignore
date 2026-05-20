@@ -11,3 +11,5 @@ __pycache__/
 *.db
 
 .env
+
+1.py
