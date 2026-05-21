@@ -140,6 +140,20 @@ func (s *TaskService) RegenerateVariantItem(ctx context.Context, userID, variant
 		return nil, err
 	}
 
+	variantNumber := 0
+	previousVariants := []string(nil)
+	if detailedTask, detailsErr := s.repo.GetTaskWithDetails(ctx, userID, task.ID); detailsErr != nil {
+		s.logger.WarnContext(ctx, "variant item regeneration uniqueness context lookup failed",
+			"user_id", userID.String(),
+			"task_id", task.ID.String(),
+			"task_item_id", taskItem.ID.String(),
+			"variant_item_id", itemID.String(),
+			"error", detailsErr,
+		)
+	} else {
+		variantNumber, previousVariants = variantContextForItem(detailedTask, taskItem.ID, itemID)
+	}
+
 	var generated *domain.VariantItem
 	attempt := 0
 	err = retry.Do(
@@ -151,27 +165,33 @@ func (s *TaskService) RegenerateVariantItem(ctx context.Context, userID, variant
 				"task_item_id", taskItem.ID.String(),
 				"variant_item_id", itemID.String(),
 				"attempt", attempt,
+				"variant_number", variantNumber,
+				"previous_variants_count", len(previousVariants),
 			)
 			item, err := s.ai.Generate(ctx, domain.GenerateRequest{
-				UserID:        userID,
-				TaskID:        task.ID,
-				TaskItemID:    taskItem.ID,
-				Order:         taskItem.Order,
-				Context:       taskItem.Context,
-				SourceContent: taskItem.Content,
-				Settings:      task.Settings,
+				UserID:           userID,
+				TaskID:           task.ID,
+				TaskItemID:       taskItem.ID,
+				VariantNumber:    variantNumber,
+				Order:            taskItem.Order,
+				Context:          taskItem.Context,
+				SourceContent:    taskItem.Content,
+				Settings:         task.Settings,
+				PreviousVariants: previousVariants,
 			})
 			if err != nil {
 				return err
 			}
 
 			valid, err := s.ai.Validate(ctx, domain.ValidateRequest{
-				UserID:     userID,
-				TaskID:     task.ID,
-				TaskItemID: taskItem.ID,
-				Original:   taskItem.Content,
-				Generated:  item.Content,
-				Settings:   task.Settings,
+				UserID:           userID,
+				TaskID:           task.ID,
+				TaskItemID:       taskItem.ID,
+				VariantNumber:    variantNumber,
+				Original:         taskItem.Content,
+				Generated:        item.Content,
+				Settings:         task.Settings,
+				PreviousVariants: previousVariants,
 			})
 			if err != nil {
 				return err
@@ -183,6 +203,8 @@ func (s *TaskService) RegenerateVariantItem(ctx context.Context, userID, variant
 					"task_item_id", taskItem.ID.String(),
 					"variant_item_id", itemID.String(),
 					"attempt", attempt,
+					"variant_number", variantNumber,
+					"previous_variants_count", len(previousVariants),
 				)
 				return domain.ErrValidationFailed
 			}
@@ -194,6 +216,8 @@ func (s *TaskService) RegenerateVariantItem(ctx context.Context, userID, variant
 				"task_item_id", taskItem.ID.String(),
 				"variant_item_id", itemID.String(),
 				"attempt", attempt,
+				"variant_number", variantNumber,
+				"previous_variants_count", len(previousVariants),
 			)
 			return nil
 		},
@@ -233,6 +257,23 @@ func (s *TaskService) RegenerateVariantItem(ctx context.Context, userID, variant
 		"variant_item_id", itemID.String(),
 	)
 	return variantItem, nil
+}
+
+func variantContextForItem(task *domain.Task, taskItemID, currentItemID uuid.UUID) (int, []string) {
+	variantNumber := 0
+	previousVariants := []string(nil)
+	for _, variant := range task.Variants {
+		for _, item := range variant.Items {
+			if item.ID == currentItemID {
+				variantNumber = variant.VariantNumber
+				continue
+			}
+			if item.TaskItemID == taskItemID && item.Status == domain.VariantItemStatusReady && strings.TrimSpace(item.Content) != "" {
+				previousVariants = append(previousVariants, item.Content)
+			}
+		}
+	}
+	return variantNumber, previousVariants
 }
 
 func (s *TaskService) ExportTask(ctx context.Context, userID, taskID uuid.UUID) (*domain.ExportResult, error) {

@@ -168,32 +168,38 @@ func (o *Orchestrator) runGeneration(taskID uuid.UUID, req StartGenerationReques
 
 func (o *Orchestrator) generateVariants(ctx context.Context, task *domain.Task, variantCount int) ([]domain.Variant, int, error) {
 	totalJobs := variantCount * len(task.TaskItems)
-	o.logger.InfoContext(ctx, "variant fan-out started",
+	o.logger.InfoContext(ctx, "variant generation started",
 		"user_id", task.UserID.String(),
 		"task_id", task.ID.String(),
 		"variant_count", variantCount,
 		"task_items_count", len(task.TaskItems),
 		"jobs_count", totalJobs,
+		"workers_count", len(task.TaskItems),
 	)
 
 	results := make(chan generationResult, variantCount*len(task.TaskItems))
 	var wg sync.WaitGroup
 
-	for variantNumber := 1; variantNumber <= variantCount; variantNumber++ {
-		for _, sourceItem := range task.TaskItems {
-			wg.Add(1)
-			go func(variantNumber int, sourceItem domain.TaskItem) {
-				defer wg.Done()
+	for _, sourceItem := range task.TaskItems {
+		wg.Add(1)
+		go func(sourceItem domain.TaskItem) {
+			defer wg.Done()
 
-				item, err := o.generateAndValidate(ctx, task, sourceItem, variantNumber)
+			previousVariants := make([]string, 0, variantCount)
+			for variantNumber := 1; variantNumber <= variantCount; variantNumber++ {
+				item, err := o.generateAndValidate(ctx, task, sourceItem, variantNumber, previousVariants)
 				results <- generationResult{
 					VariantNumber: variantNumber,
 					TaskItemID:    sourceItem.ID,
 					Item:          item,
 					Err:           err,
 				}
-			}(variantNumber, sourceItem)
-		}
+
+				if err == nil && item != nil && item.Content != "" {
+					previousVariants = append(previousVariants, item.Content)
+				}
+			}
+		}(sourceItem)
 	}
 
 	go func() {
@@ -206,7 +212,7 @@ func (o *Orchestrator) generateVariants(ctx context.Context, task *domain.Task, 
 	for result := range results {
 		if result.Err != nil {
 			failedItems++
-			o.logger.WarnContext(ctx, "variant fan-in recorded failed item",
+			o.logger.WarnContext(ctx, "variant generation recorded failed item",
 				"user_id", task.UserID.String(),
 				"task_id", task.ID.String(),
 				"variant_number", result.VariantNumber,
@@ -236,7 +242,7 @@ func (o *Orchestrator) generateVariants(ctx context.Context, task *domain.Task, 
 			Items:         grouped[variantNumber],
 		})
 	}
-	o.logger.InfoContext(ctx, "variant fan-in completed",
+	o.logger.InfoContext(ctx, "variant generation completed",
 		"user_id", task.UserID.String(),
 		"task_id", task.ID.String(),
 		"variant_count", len(variants),
@@ -246,9 +252,10 @@ func (o *Orchestrator) generateVariants(ctx context.Context, task *domain.Task, 
 	return variants, failedItems, nil
 }
 
-func (o *Orchestrator) generateAndValidate(ctx context.Context, task *domain.Task, sourceItem domain.TaskItem, variantNumber int) (*domain.VariantItem, error) {
+func (o *Orchestrator) generateAndValidate(ctx context.Context, task *domain.Task, sourceItem domain.TaskItem, variantNumber int, previousVariants []string) (*domain.VariantItem, error) {
 	var generated *domain.VariantItem
 	attempt := 0
+	previousVariants = append([]string(nil), previousVariants...)
 
 	err := retry.Do(
 		func() error {
@@ -259,29 +266,32 @@ func (o *Orchestrator) generateAndValidate(ctx context.Context, task *domain.Tas
 				"task_item_id", sourceItem.ID.String(),
 				"variant_number", variantNumber,
 				"attempt", attempt,
+				"previous_variants_count", len(previousVariants),
 			)
 			item, err := o.ai.Generate(ctx, domain.GenerateRequest{
-				UserID:        task.UserID,
-				TaskID:        task.ID,
-				TaskItemID:    sourceItem.ID,
-				VariantNumber: variantNumber,
-				Order:         sourceItem.Order,
-				Context:       sourceItem.Context,
-				SourceContent: sourceItem.Content,
-				Settings:      task.Settings,
+				UserID:           task.UserID,
+				TaskID:           task.ID,
+				TaskItemID:       sourceItem.ID,
+				VariantNumber:    variantNumber,
+				Order:            sourceItem.Order,
+				Context:          sourceItem.Context,
+				SourceContent:    sourceItem.Content,
+				Settings:         task.Settings,
+				PreviousVariants: previousVariants,
 			})
 			if err != nil {
 				return err
 			}
 
 			valid, err := o.ai.Validate(ctx, domain.ValidateRequest{
-				UserID:        task.UserID,
-				TaskID:        task.ID,
-				TaskItemID:    sourceItem.ID,
-				VariantNumber: variantNumber,
-				Original:      sourceItem.Content,
-				Generated:     item.Content,
-				Settings:      task.Settings,
+				UserID:           task.UserID,
+				TaskID:           task.ID,
+				TaskItemID:       sourceItem.ID,
+				VariantNumber:    variantNumber,
+				Original:         sourceItem.Content,
+				Generated:        item.Content,
+				Settings:         task.Settings,
+				PreviousVariants: previousVariants,
 			})
 			if err != nil {
 				return err
@@ -293,6 +303,7 @@ func (o *Orchestrator) generateAndValidate(ctx context.Context, task *domain.Tas
 					"task_item_id", sourceItem.ID.String(),
 					"variant_number", variantNumber,
 					"attempt", attempt,
+					"previous_variants_count", len(previousVariants),
 				)
 				return domain.ErrValidationFailed
 			}
@@ -304,6 +315,7 @@ func (o *Orchestrator) generateAndValidate(ctx context.Context, task *domain.Tas
 				"task_item_id", sourceItem.ID.String(),
 				"variant_number", variantNumber,
 				"attempt", attempt,
+				"previous_variants_count", len(previousVariants),
 			)
 			return nil
 		},

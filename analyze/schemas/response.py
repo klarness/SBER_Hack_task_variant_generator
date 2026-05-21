@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class ParseResponse(BaseModel):
@@ -30,6 +30,7 @@ class GenerateRequest(BaseModel):
     context: str = ""
     source_content: str
     settings: dict | None = None
+    previous_variants: list[str] = Field(default_factory=list)
 
 
 class GenerateResponse(BaseModel):
@@ -44,6 +45,7 @@ class ValidateRequest(BaseModel):
     original: str
     generated: str
     settings: dict | None = None
+    previous_variants: list[str] = Field(default_factory=list)
 
 
 class ValidateResponse(BaseModel):

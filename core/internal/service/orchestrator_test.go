@@ -3,8 +3,10 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
+	"sync"
 	"testing"
 
 	"core/internal/domain"
@@ -61,6 +63,62 @@ func TestGenerateVariantsKeepsFailedItems(t *testing.T) {
 	}
 }
 
+func TestGenerateVariantsPassesPreviousVariantsForSameTaskItem(t *testing.T) {
+	taskItemID := uuid.New()
+	task := &domain.Task{
+		ID:     uuid.New(),
+		UserID: uuid.New(),
+		TaskItems: []domain.TaskItem{
+			{ID: taskItemID, Order: 1, Content: "solve x + 1 = 3"},
+		},
+		Settings: []byte(`{}`),
+	}
+	ai := &recordingAIClient{}
+	orchestrator := &Orchestrator{
+		ai:     ai,
+		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	variants, failedItems, err := orchestrator.generateVariants(context.Background(), task, 3)
+	if err != nil {
+		t.Fatalf("generateVariants returned unexpected error: %v", err)
+	}
+	if failedItems != 0 {
+		t.Fatalf("failedItems = %d, want 0", failedItems)
+	}
+	if len(variants) != 3 {
+		t.Fatalf("variants length = %d, want 3", len(variants))
+	}
+
+	generateRequests := ai.generateRequestsSnapshot()
+	if len(generateRequests) != 3 {
+		t.Fatalf("generate requests length = %d, want 3", len(generateRequests))
+	}
+	assertPreviousVariants(t, generateRequests[0].PreviousVariants, nil)
+	assertPreviousVariants(t, generateRequests[1].PreviousVariants, []string{"variant-1-prev-0"})
+	assertPreviousVariants(t, generateRequests[2].PreviousVariants, []string{"variant-1-prev-0", "variant-2-prev-1"})
+
+	validateRequests := ai.validateRequestsSnapshot()
+	if len(validateRequests) != 3 {
+		t.Fatalf("validate requests length = %d, want 3", len(validateRequests))
+	}
+	assertPreviousVariants(t, validateRequests[0].PreviousVariants, nil)
+	assertPreviousVariants(t, validateRequests[1].PreviousVariants, []string{"variant-1-prev-0"})
+	assertPreviousVariants(t, validateRequests[2].PreviousVariants, []string{"variant-1-prev-0", "variant-2-prev-1"})
+}
+
+func assertPreviousVariants(t *testing.T, got, want []string) {
+	t.Helper()
+	if len(got) != len(want) {
+		t.Fatalf("previous variants length = %d, want %d; got %#v", len(got), len(want), got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("previous variants[%d] = %q, want %q; got %#v", i, got[i], want[i], got)
+		}
+	}
+}
+
 type fakeAIClient struct {
 	failGenerateFor uuid.UUID
 }
@@ -86,4 +144,49 @@ func (c fakeAIClient) Validate(context.Context, domain.ValidateRequest) (bool, e
 
 func (c fakeAIClient) Export(context.Context, *domain.Task) (*domain.ExportResult, error) {
 	return nil, errors.New("not implemented")
+}
+
+type recordingAIClient struct {
+	mu               sync.Mutex
+	generateRequests []domain.GenerateRequest
+	validateRequests []domain.ValidateRequest
+}
+
+func (c *recordingAIClient) Analyze(context.Context, domain.AnalyzeRequest) (*domain.AnalyzeResult, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (c *recordingAIClient) Generate(_ context.Context, req domain.GenerateRequest) (*domain.VariantItem, error) {
+	c.mu.Lock()
+	c.generateRequests = append(c.generateRequests, req)
+	c.mu.Unlock()
+
+	return &domain.VariantItem{
+		TaskItemID: req.TaskItemID,
+		Content:    fmt.Sprintf("variant-%d-prev-%d", req.VariantNumber, len(req.PreviousVariants)),
+		Status:     domain.VariantItemStatusReady,
+	}, nil
+}
+
+func (c *recordingAIClient) Validate(_ context.Context, req domain.ValidateRequest) (bool, error) {
+	c.mu.Lock()
+	c.validateRequests = append(c.validateRequests, req)
+	c.mu.Unlock()
+	return true, nil
+}
+
+func (c *recordingAIClient) Export(context.Context, *domain.Task) (*domain.ExportResult, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (c *recordingAIClient) generateRequestsSnapshot() []domain.GenerateRequest {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return append([]domain.GenerateRequest(nil), c.generateRequests...)
+}
+
+func (c *recordingAIClient) validateRequestsSnapshot() []domain.ValidateRequest {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return append([]domain.ValidateRequest(nil), c.validateRequests...)
 }

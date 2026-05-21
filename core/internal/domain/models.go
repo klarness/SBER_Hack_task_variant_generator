@@ -112,24 +112,26 @@ type VariantItemHistory struct {
 }
 
 type GenerateRequest struct {
-	UserID        uuid.UUID       `json:"user_id"`
-	TaskID        uuid.UUID       `json:"task_id"`
-	TaskItemID    uuid.UUID       `json:"task_item_id"`
-	VariantNumber int             `json:"variant_number"`
-	Order         int             `json:"order"`
-	Context       string          `json:"context,omitempty"`
-	SourceContent string          `json:"source_content"`
-	Settings      json.RawMessage `json:"settings,omitempty"`
+	UserID           uuid.UUID       `json:"user_id"`
+	TaskID           uuid.UUID       `json:"task_id"`
+	TaskItemID       uuid.UUID       `json:"task_item_id"`
+	VariantNumber    int             `json:"variant_number"`
+	Order            int             `json:"order"`
+	Context          string          `json:"context,omitempty"`
+	SourceContent    string          `json:"source_content"`
+	Settings         json.RawMessage `json:"settings,omitempty"`
+	PreviousVariants []string        `json:"previous_variants,omitempty"`
 }
 
 type ValidateRequest struct {
-	UserID        uuid.UUID       `json:"user_id"`
-	TaskID        uuid.UUID       `json:"task_id"`
-	TaskItemID    uuid.UUID       `json:"task_item_id"`
-	VariantNumber int             `json:"variant_number"`
-	Original      string          `json:"original"`
-	Generated     string          `json:"generated"`
-	Settings      json.RawMessage `json:"settings,omitempty"`
+	UserID           uuid.UUID       `json:"user_id"`
+	TaskID           uuid.UUID       `json:"task_id"`
+	TaskItemID       uuid.UUID       `json:"task_item_id"`
+	VariantNumber    int             `json:"variant_number"`
+	Original         string          `json:"original"`
+	Generated        string          `json:"generated"`
+	Settings         json.RawMessage `json:"settings,omitempty"`
+	PreviousVariants []string        `json:"previous_variants,omitempty"`
 }
 
 type ExportResult struct {

@@ -82,7 +82,8 @@ class GigaChatClient:
 
     async def generate_variant(self, request: dict[str, Any]) -> str:
         settings = normalize_generation_settings(request.get("settings") or {})
-        request = {**request, "settings": settings}
+        previous_variants = normalize_previous_variants(request.get("previous_variants"))
+        request = {**request, "settings": settings, "previous_variants": previous_variants}
         strategy = random.choice(
             [
                 "замени числовые данные и проверь, что сложность остается прежней",
@@ -99,6 +100,8 @@ class GigaChatClient:
                 "Верни только валидный JSON без markdown и пояснений. "
                 f"Обязательная стратегия этой попытки: {strategy}. "
                 "Каждый вариант должен заметно отличаться от исходного и от типовых минимальных замен."
+                "\n\nКРИТИЧЕСКИ ВАЖНО: новый вариант не должен совпадать с уже созданными вариантами для этого же задания. "
+                "Не повторяй те же числовые значения, имена, объекты и формулировки, если их можно изменить без потери смысла."
             ),
             user=(
                 "Сгенерируй альтернативное задание той же темы, типа и сложности.\n"
@@ -111,6 +114,7 @@ class GigaChatClient:
                 "- не добавляй пояснения вне JSON.\n\n"
                 f"Параметры мультипликации:\n{render_generation_settings(settings)}\n"
                 f"Входные данные JSON:\n{json.dumps(request, ensure_ascii=False)}"
+                f"\n\nУже созданные варианты для этого же задания:\n{render_previous_variants(previous_variants)}"
             ),
             temperature=0.7,
         )
@@ -121,11 +125,17 @@ class GigaChatClient:
 
     async def validate_variant(self, request: dict[str, Any]) -> bool:
         settings = normalize_generation_settings(request.get("settings") or {})
-        request = {**request, "settings": settings}
+        previous_variants = normalize_previous_variants(request.get("previous_variants"))
+        if is_duplicate_variant(str(request.get("generated") or ""), previous_variants):
+            return False
+
+        request = {**request, "settings": settings, "previous_variants": previous_variants}
         response = await self.chat_json(
             system=(
                 "Ты проверяешь качество сгенерированного варианта задания. "
                 "Верни только валидный JSON без markdown и пояснений."
+                "\n\nКРИТИЧЕСКИ ВАЖНО: верни false, если generated полностью совпадает с любым уже созданным вариантом "
+                "для этого же задания или повторяет его без содержательных отличий."
             ),
             user=(
                 "Проверь, можно ли принять generated как вариант original.\n"
@@ -143,6 +153,7 @@ class GigaChatClient:
                 "существенно меняет сложность, непонятен или почти дословно копирует original.\n\n"
                 f"Параметры мультипликации:\n{render_generation_settings(settings)}\n"
                 f"Данные JSON:\n{json.dumps(request, ensure_ascii=False)}"
+                f"\n\nУже созданные варианты для этого же задания:\n{render_previous_variants(previous_variants)}"
             ),
             temperature=0,
         )
@@ -352,6 +363,80 @@ def render_generation_settings(settings: dict[str, Any]) -> str:
             "- не менять ключевые математические/предметные связи и не добавлять решение в текст задания.",
         ]
     )
+
+
+def normalize_previous_variants(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [str(item).strip() for item in value if str(item).strip()]
+
+
+def render_previous_variants(previous_variants: list[str]) -> str:
+    if not previous_variants:
+        return "Нет ранее созданных вариантов."
+    return "\n\n".join(
+        f"Вариант {index}:\n{content}"
+        for index, content in enumerate(previous_variants, start=1)
+    )
+
+
+def is_duplicate_variant(generated: str, previous_variants: list[str]) -> bool:
+    normalized_generated = normalize_variant_text(generated)
+    if not normalized_generated:
+        return False
+    generated_key = normalize_variant_key(generated)
+    generated_signature = multiple_choice_signature(generated)
+    generated_tokens = variant_tokens(generated)
+
+    for previous in previous_variants:
+        if normalized_generated == normalize_variant_text(previous):
+            return True
+        if generated_key and generated_key == normalize_variant_key(previous):
+            return True
+        previous_signature = multiple_choice_signature(previous)
+        if generated_signature and generated_signature == previous_signature:
+            return True
+        if token_similarity(generated_tokens, variant_tokens(previous)) >= 0.95:
+            return True
+    return False
+
+
+def normalize_variant_text(value: str) -> str:
+    return re.sub(r"\s+", " ", value.casefold()).strip()
+
+
+def normalize_variant_key(value: str) -> str:
+    return "".join(re.findall(r"[0-9a-zа-яё]+", value.casefold()))
+
+
+def variant_tokens(value: str) -> set[str]:
+    return set(re.findall(r"[0-9a-zа-яё]+", value.casefold()))
+
+
+def token_similarity(left: set[str], right: set[str]) -> float:
+    if len(left) < 5 or len(right) < 5:
+        return 0
+    return len(left & right) / len(left | right)
+
+
+def multiple_choice_signature(value: str) -> tuple[str, tuple[str, ...]] | None:
+    text = normalize_variant_text(value)
+    markers = list(re.finditer(r"(?:^|\s)([a-dа-г])\s*[\)\.]", text, flags=re.IGNORECASE))
+    if len(markers) < 2:
+        return None
+
+    stem = normalize_variant_key(text[: markers[0].start()])
+    options: list[str] = []
+    for index, marker in enumerate(markers):
+        start = marker.end()
+        end = markers[index + 1].start() if index + 1 < len(markers) else len(text)
+        option = normalize_variant_key(text[start:end])
+        if option:
+            options.append(option)
+
+    if not stem or len(options) < 2:
+        return None
+    return stem, tuple(sorted(options))
 
 
 def parse_json_object(content: str) -> dict[str, Any]:
