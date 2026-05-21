@@ -1,5 +1,5 @@
 import { Link, useParams, useSearchParams } from "react-router-dom";
-import { ChevronLeft, AlertCircle } from "lucide-react";
+import { AlertCircle, ChevronLeft, Library } from "lucide-react";
 import { useTaskPolling } from "@/shared/hooks/useTaskPolling";
 import { OriginalPreview } from "@/features/original-preview/OriginalPreview";
 import { VariantGrid } from "@/features/variant-grid/VariantGrid";
@@ -28,6 +28,16 @@ export function WorkspacePage() {
         >
           <ChevronLeft size={16} />
           Новая задача
+        </Link>
+
+        <div className="w-px h-6 bg-border" />
+
+        <Link
+          to="/library"
+          className="inline-flex items-center gap-1 text-sm text-ink-700 hover:text-ink-900 transition"
+        >
+          <Library size={16} strokeWidth={1.75} />
+          Библиотека
         </Link>
 
         <div className="w-px h-6 bg-border" />

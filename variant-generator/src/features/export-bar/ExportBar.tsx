@@ -1,5 +1,5 @@
 import { useMutation } from "@tanstack/react-query";
-import { BookmarkPlus, FileText, FileType2 } from "lucide-react";
+import { FileText, FileType2 } from "lucide-react";
 import { Button } from "@/shared/ui/Button";
 import { downloadBlob, exportTask } from "@/shared/api/tasks";
 
@@ -17,7 +17,7 @@ export function ExportBar({ taskId, title }: Props) {
   });
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center gap-2 min-w-0 flex-1">
       <h1
         className="mr-auto text-sm font-medium text-ink-900 truncate max-w-xs"
         title={title}
@@ -25,12 +25,7 @@ export function ExportBar({ taskId, title }: Props) {
         {title}
       </h1>
 
-      <Button
-        size="sm"
-        variant="secondary"
-        disabled
-        title="Скоро"
-      >
+      <Button size="sm" variant="secondary" disabled title="Скоро">
         <FileText size={14} strokeWidth={1.75} />
         Экспорт PDF
       </Button>
@@ -43,11 +38,6 @@ export function ExportBar({ taskId, title }: Props) {
       >
         <FileType2 size={14} strokeWidth={1.75} />
         Экспорт DOCX
-      </Button>
-
-      <Button size="sm" variant="ghost" disabled title="Скоро">
-        <BookmarkPlus size={14} strokeWidth={1.75} />
-        В библиотеку
       </Button>
     </div>
   );

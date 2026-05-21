@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useMutation } from "@tanstack/react-query";
-import { Sparkles } from "lucide-react";
+import { Library, Sparkles } from "lucide-react";
 import { UploadDropzone } from "@/features/upload-form/UploadDropzone";
 import { SettingsPanel } from "@/features/upload-form/SettingsPanel";
 import { Input } from "@/shared/ui/Input";
@@ -50,6 +50,13 @@ export function UploadPage() {
       <header className="sticky top-0 z-10 bg-white/90 backdrop-blur border-b border-border-subtle">
         <div className="max-w-7xl mx-auto px-6 h-14 flex items-center">
           <Logo />
+          <Link
+            to="/library"
+            className="ml-auto inline-flex items-center gap-2 h-9 px-3 rounded-lg text-sm font-medium text-ink-700 hover:bg-surface-subtle hover:text-ink-900 transition"
+          >
+            <Library size={16} strokeWidth={1.75} />
+            Библиотека
+          </Link>
         </div>
       </header>
 
