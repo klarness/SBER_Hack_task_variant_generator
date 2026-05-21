@@ -36,7 +36,7 @@ export function OriginalPreview({ task }: Props) {
           items.map((it) => (
             <div key={it.id} className="glass-card px-5 py-4">
               <div className="font-mono text-[13.5px] font-bold text-accent tracking-[0.04em] mb-2">
-                Q{it.order}
+                Задание {it.order}
               </div>
               <div className="text-[14.5px] text-ink-900 whitespace-pre-wrap leading-relaxed">
                 {it.content}

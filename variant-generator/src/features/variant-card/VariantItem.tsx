@@ -46,7 +46,7 @@ export function VariantItem({
     <div className="group/item relative py-3.5 border-b border-white/40 last:border-b-0">
       <div className="flex items-start gap-3">
         <span className="shrink-0 mt-1.5 font-mono text-[12.5px] font-bold text-accent tracking-[0.04em]">
-          Q{questionOrder}-В{variantNumber}
+          Задание {questionOrder}
         </span>
 
         <div className="flex-1 min-w-0">
