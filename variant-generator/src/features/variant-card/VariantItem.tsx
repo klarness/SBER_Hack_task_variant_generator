@@ -44,33 +44,10 @@ export function VariantItem({
 
   return (
     <div className="group/item relative py-3.5 border-b border-white/40 last:border-b-0">
-      <div className="flex items-start gap-3">
-        <span className="shrink-0 mt-1.5 font-mono text-[12.5px] font-bold text-accent tracking-[0.04em]">
+      <div className="flex items-center justify-between gap-3 mb-2">
+        <span className="font-mono text-[12.5px] font-bold text-accent tracking-[0.04em]">
           Задание {questionOrder}
         </span>
-
-        <div className="flex-1 min-w-0">
-          {isFailed ? (
-            <div className="rounded-xl border border-warn-border bg-warn-bg px-3.5 py-2.5 text-sm text-warn-ink">
-              <div className="flex items-start gap-2">
-                <AlertCircle size={15} className="mt-0.5 shrink-0" />
-                <div>
-                  <p className="font-medium">Не удалось сгенерировать этот пункт</p>
-                  {item.error_message && (
-                    <p className="mt-1 text-xs opacity-80">{item.error_message}</p>
-                  )}
-                </div>
-              </div>
-            </div>
-          ) : (
-            <RichEditor
-              value={localContent}
-              onChange={setLocalContent}
-              onCommit={(html) => editMutation.mutate(html)}
-              showToolbar={false}
-            />
-          )}
-        </div>
 
         <div
           className={cn(
@@ -110,14 +87,37 @@ export function VariantItem({
         </div>
       </div>
 
+      <div className="min-w-0">
+        {isFailed ? (
+          <div className="rounded-xl border border-warn-border bg-warn-bg px-3.5 py-2.5 text-sm text-warn-ink">
+            <div className="flex items-start gap-2">
+              <AlertCircle size={15} className="mt-0.5 shrink-0" />
+              <div>
+                <p className="font-medium">Не удалось сгенерировать этот пункт</p>
+                <p className="mt-1 text-xs opacity-80">
+                  Попробуйте выполнить генерацию задания еще раз
+                </p>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <RichEditor
+            value={localContent}
+            onChange={setLocalContent}
+            onCommit={(html) => editMutation.mutate(html)}
+            showToolbar={false}
+          />
+        )}
+      </div>
+
       {editMutation.isError && (
-        <p className="mt-1 ml-8 text-xs text-danger">
+        <p className="mt-1 text-xs text-danger">
           Не удалось сохранить. Попробуйте еще раз.
         </p>
       )}
       {regenMutation.isError && (
-        <p className="mt-1 ml-8 text-xs text-danger">
-          Не удалось перегенерировать. Попробуйте еще раз.
+        <p className="mt-1 text-xs text-danger">
+          Не удалось перегенерировать. Можете написать задание вручную.
         </p>
       )}
     </div>
