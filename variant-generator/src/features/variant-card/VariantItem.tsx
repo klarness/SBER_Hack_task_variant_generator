@@ -43,15 +43,15 @@ export function VariantItem({
   });
 
   return (
-    <div className="group/item relative py-3 border-b border-border-subtle last:border-b-0">
-      <div className="flex items-start gap-2">
-        <span className="shrink-0 mt-2 text-xs font-semibold text-sber-700 tabular-nums">
+    <div className="group/item relative py-3.5 border-b border-white/40 last:border-b-0">
+      <div className="flex items-start gap-3">
+        <span className="shrink-0 mt-1.5 font-mono text-[12.5px] font-bold text-accent tracking-[0.04em]">
           Q{questionOrder}-В{variantNumber}
         </span>
 
         <div className="flex-1 min-w-0">
           {isFailed ? (
-            <div className="rounded-md border border-danger/30 bg-danger/5 px-3 py-2 text-sm text-danger">
+            <div className="rounded-xl border border-warn-border bg-warn-bg px-3.5 py-2.5 text-sm text-warn-ink">
               <div className="flex items-start gap-2">
                 <AlertCircle size={15} className="mt-0.5 shrink-0" />
                 <div>
@@ -95,8 +95,9 @@ export function VariantItem({
             disabled={regenMutation.isPending}
             title="Перегенерировать"
             className={cn(
-              "w-7 h-7 inline-flex items-center justify-center rounded-md",
-              "text-ink-700 hover:bg-sber-50 hover:text-sber-700 transition",
+              "w-8 h-8 inline-flex items-center justify-center rounded-lg",
+              "border border-border bg-white/60 backdrop-blur-sm",
+              "text-accent hover:bg-accent hover:text-white hover:border-accent transition",
               "disabled:opacity-50"
             )}
           >

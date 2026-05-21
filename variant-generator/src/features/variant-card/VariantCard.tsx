@@ -21,13 +21,12 @@ export function VariantCard({ taskId, variant, taskItems, a4 = true }: Props) {
     <article
       className={
         a4
-          ? 
-            "bg-white border border-border-subtle rounded-xl2 shadow-card overflow-hidden flex flex-col"
-          : "bg-white border border-border-subtle rounded-xl2 shadow-card flex flex-col"
+          ? "glass-card overflow-hidden flex flex-col"
+          : "glass-card flex flex-col"
       }
     >
-      <header className="flex items-center justify-between px-4 h-11 border-b border-border-subtle bg-surface-base/40">
-        <h3 className="text-sm font-semibold text-ink-900">
+      <header className="flex items-center justify-between px-5 pt-4 pb-2">
+        <h3 className="text-[17px] font-bold text-ink-900 tracking-tight">
           Вариант {variant.variant_number}
         </h3>
         <span className="text-xs text-ink-500 tabular-nums">
@@ -35,7 +34,7 @@ export function VariantCard({ taskId, variant, taskItems, a4 = true }: Props) {
         </span>
       </header>
 
-      <div className="px-3 py-1 flex-1 overflow-y-auto">
+      <div className="px-4 pb-3 flex-1 overflow-y-auto">
         {sortedItems.map((item) => (
           <VariantItem
             key={item.id}

@@ -86,25 +86,23 @@ export function SettingsPanel({
   };
 
   return (
-    <div className="flex flex-col gap-6">
-      <section>
-        <h3 className="text-xs font-semibold text-ink-500 uppercase tracking-wider mb-3">
-          Параметры генерации
-        </h3>
-        <Slider
-          label="Количество вариантов"
-          value={variantCount}
-          onChange={onVariantCountChange}
-          min={2}
-          max={10}
-        />
+    <>
+      <section className="glass-card p-[22px]">
+        <h3 className="label-mono text-ink-700">Параметры генерации</h3>
+        <div className="mt-3.5">
+          <Slider
+            label="Количество вариантов"
+            value={variantCount}
+            onChange={onVariantCountChange}
+            min={2}
+            max={10}
+          />
+        </div>
       </section>
 
-      <section>
-        <h3 className="text-xs font-semibold text-ink-500 uppercase tracking-wider mb-3">
-          Изменения
-        </h3>
-        <div className="flex flex-col gap-3">
+      <section className="glass-card p-[22px]">
+        <h3 className="label-mono text-ink-700 mb-3">Изменения</h3>
+        <div className="flex flex-col gap-0.5">
           {STRATEGIES.map((s) => (
             <Checkbox
               key={s.key}
@@ -117,27 +115,45 @@ export function SettingsPanel({
         </div>
       </section>
 
-      <section>
-        <h3 className="text-xs font-semibold text-ink-500 uppercase tracking-wider mb-3">
-          Типы чисел
-        </h3>
-        <div className="grid grid-cols-1 gap-2">
-          {NUMBER_TYPES.map((type) => (
-            <Checkbox
-              key={type.key}
-              label={type.label}
-              checked={settings.number_types.includes(type.key)}
-              onChange={() => toggleNumberType(type.key)}
-              className="items-center"
-            />
-          ))}
+      <section className="glass-card p-[22px]">
+        <h3 className="label-mono text-ink-700 mb-3.5">Типы чисел</h3>
+        <div className="flex gap-2 flex-wrap">
+          {NUMBER_TYPES.map((type) => {
+            const active = settings.number_types.includes(type.key);
+            return (
+              <button
+                key={type.key}
+                type="button"
+                onClick={() => toggleNumberType(type.key)}
+                className={
+                  active
+                    ? "h-9 px-4 rounded-full text-sm font-medium inline-flex items-center gap-1.5 bg-accent text-white border-[1.5px] border-accent transition"
+                    : "h-9 px-4 rounded-full text-sm font-medium inline-flex items-center gap-1.5 bg-white/60 text-ink-900 border-[1.5px] border-border hover:bg-white transition"
+                }
+              >
+                {active ? (
+                  <svg
+                    width="13"
+                    height="13"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="m4 12 5 5L20 6" />
+                  </svg>
+                ) : null}
+                {type.label}
+              </button>
+            );
+          })}
         </div>
       </section>
 
-      <section>
-        <h3 className="text-xs font-semibold text-ink-500 uppercase tracking-wider mb-3">
-          Не изменять
-        </h3>
+      <section className="glass-card p-[22px]">
+        <h3 className="label-mono text-ink-700 mb-3">Не изменять</h3>
         <TagInput
           value={settings.locked_parts}
           onChange={(next) =>
@@ -145,16 +161,14 @@ export function SettingsPanel({
           }
           placeholder="Например: 'формула Виета'"
         />
-        <p className="mt-1.5 text-xs text-ink-500">
+        <p className="mt-2.5 text-[12.5px] text-ink-500 leading-relaxed">
           Эти слова и фразы алгоритм не будет менять
         </p>
       </section>
 
-      <section>
-        <h3 className="text-xs font-semibold text-ink-500 uppercase tracking-wider mb-3">
-          Проверки
-        </h3>
-        <div className="flex flex-col gap-3">
+      <section className="glass-card p-[22px]">
+        <h3 className="label-mono text-ink-700 mb-3">Проверки</h3>
+        <div className="flex flex-col gap-0.5">
           <Checkbox
             label="Сохранять сложность"
             hint="Не упрощать и не усложнять варианты"
@@ -179,6 +193,6 @@ export function SettingsPanel({
           />
         </div>
       </section>
-    </div>
+    </>
   );
 }

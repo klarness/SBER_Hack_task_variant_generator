@@ -3,18 +3,21 @@ import { cn } from "@/shared/lib/cn";
 
 interface Props extends HTMLAttributes<HTMLDivElement> {
   hoverable?: boolean;
+  flat?: boolean;
 }
 
 export const Card = forwardRef<HTMLDivElement, Props>(function Card(
-  { className, hoverable, ...rest },
+  { className, hoverable, flat, ...rest },
   ref
 ) {
   return (
     <div
       ref={ref}
       className={cn(
-        "bg-surface-card border border-border-subtle rounded-xl2 shadow-card",
-        hoverable && "hover:shadow-cardHover transition-shadow",
+        flat
+          ? "bg-white border border-border-legacy rounded-xl2 shadow-card"
+          : "glass-card",
+        hoverable && "transition-shadow hover:shadow-glassHover",
         className
       )}
       {...rest}
