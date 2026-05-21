@@ -46,29 +46,35 @@ export function UploadPage() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col">
-      <header className="sticky top-0 z-10 bg-white/90 backdrop-blur border-b border-border-subtle">
-        <div className="max-w-7xl mx-auto px-6 h-14 flex items-center">
-          <Logo />
+    <div className="canvas-bg min-h-screen flex flex-col">
+      <span className="canvas-blob canvas-blob-1" />
+      <span className="canvas-blob canvas-blob-2" />
+      <span className="canvas-blob canvas-blob-3" />
+
+      <header className="canvas-content relative z-[5] pt-12 pb-6 px-6">
+        <div className="max-w-7xl mx-auto text-center">
+          <h1
+            className="title-gradient font-display font-bold tracking-tighter2 leading-[1.02]
+                       text-[44px] md:text-[60px] lg:text-[72px]"
+          >
+            Генератор вариантов заданий
+          </h1>
         </div>
       </header>
 
-      <main className="flex-1">
-        <div className="max-w-7xl mx-auto px-6 py-10">
-          <div className="mb-8">
-            <h1 className="text-3xl font-bold font-display text-ink-900">
-              Сгенерировать варианты
-            </h1>
-            <p className="mt-2 text-sm text-ink-700">
+      <main className="canvas-content flex-1">
+        <div className="max-w-7xl mx-auto px-6 pb-16 pt-2">
+          <div className="mb-8 max-w-2xl">
+            <p className="text-[15px] md:text-base text-ink-700 leading-relaxed">
               Загрузите эталонное задание и система создаст несколько
               однотипных вариантов одинаковой сложности.
             </p>
           </div>
 
-          <div className="grid lg:grid-cols-[1fr_360px] gap-6 items-start">
-            <div className="flex flex-col gap-5 bg-white rounded-xl2 border border-border-subtle p-6 shadow-card">
+          <div className="grid lg:grid-cols-[1fr_380px] gap-5 items-start">
+            <div className="glass-card p-8 flex flex-col gap-6">
               <div>
-                <label className="block text-xs font-semibold text-ink-500 uppercase tracking-wider mb-2">
+                <label className="label-mono text-ink-700 block mb-2.5">
                   Название
                 </label>
                 <Input
@@ -79,14 +85,14 @@ export function UploadPage() {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-ink-500 uppercase tracking-wider mb-2">
+                <label className="label-mono text-ink-700 block mb-2.5">
                   Файлы с заданием
                 </label>
                 <UploadDropzone files={files} onChange={setFiles} />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-ink-500 uppercase tracking-wider mb-2">
+                <label className="label-mono text-ink-700 block mb-2.5">
                   Или введите текст вручную
                 </label>
                 <Textarea
@@ -98,25 +104,26 @@ export function UploadPage() {
               </div>
 
               {createMutation.isError && (
-                <div className="px-3 py-2 rounded-lg bg-red-50 border border-danger/20 text-sm text-danger">
+                <div className="px-4 py-3 rounded-xl bg-warn-bg border border-warn-border text-sm text-warn-ink">
                   {(createMutation.error as Error).message}
                 </div>
               )}
 
-              <div className="flex justify-end pt-2">
+              <div className="flex justify-end pt-1">
                 <Button
                   size="lg"
+                  variant="soft"
                   onClick={handleSubmit}
                   disabled={!canSubmit}
                   loading={createMutation.isPending}
                 >
-                  <Sparkles size={18} strokeWidth={1.75} />
+                  <Sparkles size={18} strokeWidth={2} />
                   Сгенерировать варианты
                 </Button>
               </div>
             </div>
 
-            <aside className="bg-white rounded-xl2 border border-border-subtle p-6 shadow-card lg:sticky lg:top-20">
+            <aside className="flex flex-col gap-4 lg:sticky lg:top-6">
               <SettingsPanel
                 variantCount={variantCount}
                 onVariantCountChange={setVariantCount}
@@ -127,19 +134,6 @@ export function UploadPage() {
           </div>
         </div>
       </main>
-    </div>
-  );
-}
-
-function Logo() {
-  return (
-    <div className="flex items-center gap-2">
-      <span className="w-8 h-8 rounded-lg bg-sber-gradient grid place-items-center text-white font-bold text-sm">
-        В
-      </span>
-      <span className="font-display font-bold text-ink-900">
-        Variant&nbsp;Studio
-      </span>
     </div>
   );
 }

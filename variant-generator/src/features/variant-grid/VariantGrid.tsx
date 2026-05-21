@@ -24,7 +24,7 @@ export function VariantGrid({ task }: Props) {
   return (
     <div className="h-full overflow-auto p-5">
       <div
-        className="grid gap-4 min-h-full"
+        className="grid gap-3.5 min-h-full"
         style={{
           gridTemplateColumns:
             variants.length === 1

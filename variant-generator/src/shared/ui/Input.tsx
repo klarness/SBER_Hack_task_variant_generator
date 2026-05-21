@@ -13,11 +13,11 @@ export const Input = forwardRef<HTMLInputElement, Props>(function Input(
     <input
       ref={ref}
       className={cn(
-        "h-10 px-3 w-full text-sm bg-white text-ink-900 placeholder:text-ink-500",
-        "border rounded-lg transition outline-none",
+        "h-11 px-4 w-full text-[15px] bg-glass-input backdrop-blur-sm text-ink-900 placeholder:text-ink-500",
+        "border-[1.5px] rounded-xl transition outline-none",
         invalid
-          ? "border-danger focus:shadow-[0_0_0_3px_rgba(230,55,87,0.18)]"
-          : "border-border focus:border-sber-500 focus:shadow-focus",
+          ? "border-danger focus:shadow-[0_0_0_4px_rgba(208,58,26,0.18)]"
+          : "border-border focus:border-accent focus:shadow-focus",
         className
       )}
       {...rest}

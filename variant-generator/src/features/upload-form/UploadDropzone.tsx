@@ -32,25 +32,23 @@ export function UploadDropzone({ files, onChange }: Props) {
       <div
         {...getRootProps()}
         className={cn(
-          "relative cursor-pointer rounded-xl2 border-2 border-dashed transition",
-          "px-6 py-10 text-center bg-white",
+          "relative cursor-pointer rounded-2xl border-2 border-dashed transition",
+          "px-6 py-10 text-center backdrop-blur-sm",
           isDragActive
-            ? "border-sber-500 bg-sber-50/40"
-            : "border-border hover:border-sber-300"
+            ? "border-accent bg-accent-soft/40"
+            : "border-border hover:border-accent/60 bg-glass-drop"
         )}
       >
         <input {...getInputProps()} />
-        <UploadCloud
-          size={32}
-          strokeWidth={1.5}
-          className="mx-auto text-sber-500"
-        />
-        <p className="mt-3 text-sm font-medium text-ink-900">
+        <div className="mx-auto w-12 h-12 grid place-items-center text-accent">
+          <UploadCloud size={26} strokeWidth={2} />
+        </div>
+        <p className="mt-3 text-[15px] font-semibold text-ink-900">
           {isDragActive
             ? "Отпустите файлы здесь"
             : "Перетащите файлы или нажмите"}
         </p>
-        <p className="mt-1 text-xs text-ink-500">
+        <p className="mt-1.5 text-[12.5px] text-ink-500 tracking-[0.04em]">
           PDF, DOCX, PNG, JPG
         </p>
       </div>
@@ -60,7 +58,7 @@ export function UploadDropzone({ files, onChange }: Props) {
           {files.map((file, idx) => (
             <li
               key={`${file.name}-${idx}`}
-              className="flex items-center gap-2 px-3 py-2 bg-surface-card border border-border-subtle rounded-lg"
+              className="flex items-center gap-2 px-3 py-2 bg-white/70 backdrop-blur-sm border border-border-subtle rounded-xl"
             >
               {file.type.startsWith("image/") ? (
                 <ImageIcon
@@ -84,7 +82,7 @@ export function UploadDropzone({ files, onChange }: Props) {
               <button
                 type="button"
                 onClick={() => remove(idx)}
-                className="w-7 h-7 inline-flex items-center justify-center rounded-md text-ink-500 hover:bg-surface-subtle hover:text-danger transition"
+                className="w-7 h-7 inline-flex items-center justify-center rounded-full text-ink-500 hover:bg-white hover:text-danger transition"
                 aria-label="Удалить файл"
               >
                 <X size={14} />

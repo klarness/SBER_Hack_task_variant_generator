@@ -17,36 +17,31 @@ export function ExportBar({ taskId, title }: Props) {
   });
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center gap-1.5 flex-1">
       <h1
-        className="mr-auto text-sm font-medium text-ink-900 truncate max-w-xs"
+        className="mr-auto text-[15px] font-bold text-ink-900 truncate max-w-sm px-2"
         title={title}
       >
         {title}
       </h1>
 
-      <Button
-        size="sm"
-        variant="secondary"
-        disabled
-        title="Скоро"
-      >
-        <FileText size={14} strokeWidth={1.75} />
+      <Button size="sm" variant="ghost" disabled title="Скоро">
+        <FileText size={15} strokeWidth={1.75} />
         Экспорт PDF
       </Button>
 
       <Button
         size="sm"
-        variant="secondary"
+        variant="ghost"
         onClick={() => docxMutation.mutate()}
         loading={docxMutation.isPending}
       >
-        <FileType2 size={14} strokeWidth={1.75} />
+        <FileType2 size={15} strokeWidth={1.75} />
         Экспорт DOCX
       </Button>
 
       <Button size="sm" variant="ghost" disabled title="Скоро">
-        <BookmarkPlus size={14} strokeWidth={1.75} />
+        <BookmarkPlus size={15} strokeWidth={1.75} />
         В библиотеку
       </Button>
     </div>
