@@ -10,3 +10,4 @@ pydantic-settings
 gigachat
 python-dotenv
 json-repair
+python-pptx
