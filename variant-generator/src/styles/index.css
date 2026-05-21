@@ -1,5 +1,3 @@
-@import url("https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap");
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -51,9 +49,9 @@ body {
 }
 
 .label-mono {
-  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-family: "Manrope", system-ui, sans-serif;
   font-size: 11px;
-  font-weight: 500;
+  font-weight: 600;
   letter-spacing: 0.13em;
   text-transform: uppercase;
 }

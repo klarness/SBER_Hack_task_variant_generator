@@ -58,26 +58,9 @@ export default {
         },
       },
       fontFamily: {
-        sans: [
-          "Onest",
-          "'SB Sans Text'",
-          "Manrope",
-          "system-ui",
-          "sans-serif",
-        ],
-        display: [
-          "Onest",
-          "'SB Sans Display'",
-          "Manrope",
-          "system-ui",
-          "sans-serif",
-        ],
-        mono: [
-          "'JetBrains Mono'",
-          "ui-monospace",
-          "SFMono-Regular",
-          "monospace",
-        ],
+        sans: ["Manrope", "system-ui", "sans-serif"],
+        display: ["Manrope", "system-ui", "sans-serif"],
+        mono: ["Manrope", "system-ui", "sans-serif"],
       },
       letterSpacing: {
         labelMono: "0.13em",
