@@ -44,7 +44,7 @@ export function VariantItem({
   });
 
   return (
-    <div className="group/item relative py-3.5 border-b border-white/40 last:border-b-0">
+    <div className="group/item relative py-3.5 px-3 -mx-1 border-b border-white/40 last:border-b-0 rounded-xl ring-1 ring-transparent hover:ring-accent/15 hover:bg-white/30 transition">
       <div className="flex items-center justify-between gap-3 mb-2">
         <span className="font-mono text-[12.5px] font-bold text-accent tracking-[0.04em]">
           Задание {questionOrder}
