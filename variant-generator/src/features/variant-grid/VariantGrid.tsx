@@ -1,3 +1,5 @@
+import { useEffect, useState } from "react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { VariantCard } from "@/features/variant-card/VariantCard";
 import type { Task } from "@/shared/types/domain";
 
@@ -11,6 +13,22 @@ export function VariantGrid({ task }: Props) {
   );
   const taskItems = task.task_items ?? [];
 
+  const [index, setIndex] = useState(0);
+
+  useEffect(() => {
+    if (index >= variants.length) setIndex(0);
+  }, [variants.length, index]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (variants.length < 2) return;
+      if (e.key === "ArrowLeft") setIndex((i) => (i - 1 + variants.length) % variants.length);
+      else if (e.key === "ArrowRight") setIndex((i) => (i + 1) % variants.length);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [variants.length]);
+
   if (variants.length === 0) {
     return (
       <div className="h-full grid place-items-center text-sm text-ink-500">
@@ -19,29 +37,68 @@ export function VariantGrid({ task }: Props) {
     );
   }
 
-  // Адаптивная сетка:
-  // 1 вариант — 1 колонка, 2 — 2, 3+ — 3 с горизонтальным скроллом
+  const current = variants[Math.min(index, variants.length - 1)];
+  const next = () => setIndex((i) => (i + 1) % variants.length);
+  const prev = () => setIndex((i) => (i - 1 + variants.length) % variants.length);
+  const single = variants.length < 2;
+
   return (
-    <div className="h-full overflow-auto p-5">
-      <div
-        className="grid gap-3.5 min-h-full"
-        style={{
-          gridTemplateColumns:
-            variants.length === 1
-              ? "minmax(0, 1fr)"
-              : variants.length === 2
-                ? "repeat(2, minmax(360px, 1fr))"
-                : `repeat(${variants.length}, minmax(380px, 1fr))`,
-        }}
-      >
-        {variants.map((v) => (
-          <VariantCard
-            key={v.id}
-            taskId={task.id}
-            variant={v}
-            taskItems={taskItems}
-          />
-        ))}
+    <div className="h-full flex flex-col">
+      <div className="shrink-0 px-5 pt-4 pb-3 flex items-center justify-between gap-3">
+        <button
+          type="button"
+          onClick={prev}
+          disabled={single}
+          aria-label="Предыдущий вариант"
+          className="w-10 h-10 inline-flex items-center justify-center rounded-full bg-white border border-border text-ink-900 hover:bg-accent hover:text-white hover:border-accent transition disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-white disabled:hover:text-ink-900"
+        >
+          <ChevronLeft size={20} strokeWidth={2} />
+        </button>
+
+        <div className="flex flex-col items-center min-w-0">
+          <span className="label-mono text-ink-500">Вариант</span>
+          <span className="text-base font-bold text-ink-900 tabular-nums">
+            {current.variant_number} <span className="text-ink-500 font-medium">/ {variants.length}</span>
+          </span>
+        </div>
+
+        <button
+          type="button"
+          onClick={next}
+          disabled={single}
+          aria-label="Следующий вариант"
+          className="w-10 h-10 inline-flex items-center justify-center rounded-full bg-white border border-border text-ink-900 hover:bg-accent hover:text-white hover:border-accent transition disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-white disabled:hover:text-ink-900"
+        >
+          <ChevronRight size={20} strokeWidth={2} />
+        </button>
+      </div>
+
+      <div className="shrink-0 px-5 pb-3 min-h-[40px] flex items-center justify-center gap-1.5 flex-wrap">
+        {variants.length > 1 &&
+          variants.map((v, i) => (
+            <button
+              key={v.id}
+              type="button"
+              onClick={() => setIndex(i)}
+              aria-label={`Перейти к варианту ${v.variant_number}`}
+              className={
+                i === index
+                  ? "h-7 min-w-7 px-2 rounded-full bg-accent text-white text-xs font-bold tabular-nums transition"
+                  : "h-7 min-w-7 px-2 rounded-full bg-white border border-border text-ink-700 text-xs font-medium tabular-nums hover:bg-accent-soft/60 transition"
+              }
+            >
+              {v.variant_number}
+            </button>
+          ))}
+      </div>
+
+      <div className="flex-1 min-h-0 overflow-auto px-5 pb-5">
+        <VariantCard
+          key={current.id}
+          taskId={task.id}
+          variant={current}
+          taskItems={taskItems}
+        />
       </div>
     </div>
   );

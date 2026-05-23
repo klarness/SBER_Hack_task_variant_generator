@@ -10,7 +10,7 @@ export function OriginalPreview({ task }: Props) {
 
   return (
     <div className="h-full flex flex-col">
-      <header className="px-6 py-5">
+      <header className="px-6 pt-5 pb-11">
         <h2 className="text-[17px] font-bold text-ink-900 tracking-tight">
           Исходное задание
         </h2>

@@ -54,29 +54,39 @@ export function WorkspacePage() {
         )}
       </header>
 
-      <div className="canvas-content flex-1 grid grid-cols-[minmax(0,400px)_1fr] overflow-hidden">
-        <div className="overflow-hidden">
-          {task ? (
-            <OriginalPreview task={task} />
-          ) : (
-            <div className="h-full grid place-items-center">
-              {isLoading && <Spinner />}
-            </div>
-          )}
+      <div className="canvas-content flex-1 grid grid-cols-[2fr_3fr] overflow-hidden divide-x divide-border-subtle">
+        <div className="overflow-hidden flex flex-col">
+          <div className="shrink-0 px-5 pt-4 pb-2" aria-hidden="true">
+            <span className="label-mono invisible">.</span>
+          </div>
+          <div className="flex-1 min-h-0 overflow-hidden">
+            {task ? (
+              <OriginalPreview task={task} />
+            ) : (
+              <div className="h-full grid place-items-center">
+                {isLoading && <Spinner />}
+              </div>
+            )}
+          </div>
         </div>
 
-        <div className="overflow-hidden">
-          {isLoading && <LoadingState />}
-          {isError && <ErrorState message="Не удалось загрузить задачу" />}
-          {task && task.status === "failed" && (
-            <ErrorState
-              message={task.error_message || "Генерация не удалась"}
-            />
-          )}
-          {task && (task.status === "pending" || task.status === "processing") && (
-            <PendingState />
-          )}
-          {task && task.status === "done" && <VariantGrid task={task} />}
+        <div className="overflow-hidden flex flex-col">
+          <div className="shrink-0 px-5 pt-4 pb-2">
+            <span className="label-mono text-accent-ink">Сгенерированный вариант</span>
+          </div>
+          <div className="flex-1 min-h-0 overflow-hidden">
+            {isLoading && <LoadingState />}
+            {isError && <ErrorState message="Не удалось загрузить задачу" />}
+            {task && task.status === "failed" && (
+              <ErrorState
+                message={task.error_message || "Генерация не удалась"}
+              />
+            )}
+            {task && (task.status === "pending" || task.status === "processing") && (
+              <PendingState />
+            )}
+            {task && task.status === "done" && <VariantGrid task={task} />}
+          </div>
         </div>
       </div>
     </div>
@@ -95,11 +105,7 @@ function StatusPill({ status }: { status: string }) {
 function LoadingState() {
   return (
     <div className="h-full p-5">
-      <div className="grid grid-cols-3 gap-4 h-full">
-        {[0, 1, 2].map((i) => (
-          <div key={i} className="glass-card shimmer" />
-        ))}
-      </div>
+      <div className="h-full glass-card shimmer" />
     </div>
   );
 }
