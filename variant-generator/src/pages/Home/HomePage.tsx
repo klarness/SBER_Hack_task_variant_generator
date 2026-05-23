@@ -1,12 +1,25 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { ArrowRight, Library, Upload } from "lucide-react";
+import { ArrowRight, Library, Sparkles, Upload, X } from "lucide-react";
 import { Button } from "@/shared/ui/Button";
 import { SUBJECTS } from "@/shared/constants/subjects";
 
 export function HomePage() {
   const navigate = useNavigate();
   const [isChoosingSubject, setIsChoosingSubject] = useState(false);
+
+  useEffect(() => {
+    if (!isChoosingSubject) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setIsChoosingSubject(false);
+    };
+    window.addEventListener("keydown", onKey);
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = "";
+    };
+  }, [isChoosingSubject]);
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -60,45 +73,65 @@ export function HomePage() {
               </div>
             ))}
           </section>
-
-          {isChoosingSubject && (
-            <section className="mt-8 bg-white rounded-xl2 border border-border-subtle p-5 md:p-6 shadow-card">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <h2 className="text-xl font-bold font-display text-ink-900">
-                    Выберите предмет
-                  </h2>
-                  <p className="mt-1 text-sm text-ink-700">
-                    Для каждого предмета будут свои настройки и отдельная
-                    заготовка промпта.
-                  </p>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setIsChoosingSubject(false)}
-                >
-                  Закрыть
-                </Button>
-              </div>
-
-              <div className="mt-5 grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                {SUBJECTS.map((subject) => (
-                  <button
-                    key={subject.value}
-                    type="button"
-                    onClick={() => navigate(`/upload?subject=${subject.value}`)}
-                    className="h-14 px-4 rounded-xl border border-border-subtle bg-white text-left font-semibold text-ink-900 hover:border-accent/50 hover:bg-accent-soft/50 transition inline-flex items-center justify-between gap-3"
-                  >
-                    <span>{subject.label}</span>
-                    <ArrowRight size={17} strokeWidth={1.75} />
-                  </button>
-                ))}
-              </div>
-            </section>
-          )}
         </div>
       </main>
+
+      {isChoosingSubject && (
+        <SubjectModal
+          onClose={() => setIsChoosingSubject(false)}
+          onPick={(value) => navigate(`/upload?subject=${value}`)}
+        />
+      )}
+    </div>
+  );
+}
+
+function SubjectModal({
+  onClose,
+  onPick,
+}: {
+  onClose: () => void;
+  onPick: (value: string) => void;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6 bg-ink-900/30 backdrop-blur-sm"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+    >
+      <div
+        className="w-full max-w-3xl max-h-[90vh] overflow-y-auto bg-white rounded-2xl border border-border-subtle shadow-glassHover p-6 md:p-8"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-4">
+          <h2 className="text-2xl font-bold font-display text-ink-900">
+            Выберите предмет
+          </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Закрыть"
+            className="w-9 h-9 inline-flex items-center justify-center rounded-full text-ink-700 hover:bg-surface-subtle transition"
+          >
+            <X size={18} strokeWidth={2} />
+          </button>
+        </div>
+
+        <div className="mt-6 grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          {SUBJECTS.map((subject) => (
+            <button
+              key={subject.value}
+              type="button"
+              onClick={() => onPick(subject.value)}
+              className="h-14 px-4 rounded-xl border border-border-subtle bg-white text-left font-semibold text-ink-900 hover:border-accent hover:bg-accent-soft/60 transition inline-flex items-center justify-between gap-3"
+            >
+              <span>{subject.label}</span>
+              <ArrowRight size={17} strokeWidth={1.75} />
+            </button>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
@@ -106,10 +139,10 @@ export function HomePage() {
 function Logo() {
   return (
     <div className="flex items-center gap-2">
-      <span className="w-8 h-8 rounded-lg bg-sber-gradient grid place-items-center text-white font-bold text-sm">
-        В
+      <Sparkles size={18} strokeWidth={2} className="text-accent" />
+      <span className="font-display font-bold text-ink-900">
+        Генератор заданий
       </span>
-      <span className="font-display font-bold text-ink-900">Variant&nbsp;Studio</span>
     </div>
   );
 }

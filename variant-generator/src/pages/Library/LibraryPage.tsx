@@ -11,6 +11,7 @@ import {
   Plus,
   RefreshCcw,
   Search,
+  Sparkles,
 } from "lucide-react";
 import { listTasks } from "@/shared/api/tasks";
 import { Input } from "@/shared/ui/Input";
@@ -51,11 +52,9 @@ export function LibraryPage() {
       <header className="sticky top-0 z-10 bg-white/90 backdrop-blur border-b border-border-subtle">
         <div className="max-w-7xl mx-auto px-6 h-14 flex items-center gap-4">
           <Link to="/" className="flex items-center gap-2">
-            <span className="w-8 h-8 rounded-lg bg-sber-gradient grid place-items-center text-white font-bold text-sm">
-              В
-            </span>
+            <Sparkles size={18} strokeWidth={2} className="text-accent" />
             <span className="font-display font-bold text-ink-900">
-              Variant&nbsp;Studio
+              Генератор заданий
             </span>
           </Link>
 
