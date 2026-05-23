@@ -8,6 +8,7 @@ import docx
 
 from analyze.services.llm.client import GigaChatClient
 from analyze.services.parsing.office_math import format_inline_math, omml_to_latex
+from analyze.services.parsing.tesseract_ocr import TesseractOCR
 
 
 WORD_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
@@ -89,6 +90,7 @@ def _clean_math_text(text: str) -> str:
 class DOCXParser:
     def __init__(self):
         self.gigachat = GigaChatClient()
+        self.tesseract = TesseractOCR()
         self.semaphore = asyncio.Semaphore(3)
 
     async def parse(self, file_bytes: bytes) -> str:
@@ -300,6 +302,10 @@ class DOCXParser:
     async def _extract_image_text_safe(self, image_bytes: bytes) -> str:
         async with self.semaphore:
             try:
+                local_result = self.tesseract.extract_text(image_bytes)
+                if local_result.accepted:
+                    return local_result.text
+
                 return await self.gigachat.extract_text_from_image(image_bytes)
             except Exception as e:
                 print(f"DOCX image extraction error: {e}")

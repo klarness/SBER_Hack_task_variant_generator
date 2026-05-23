@@ -5,6 +5,7 @@ pymupdf
 pdfplumber
 python-docx
 pillow
+pytesseract
 httpx
 pydantic-settings
 gigachat

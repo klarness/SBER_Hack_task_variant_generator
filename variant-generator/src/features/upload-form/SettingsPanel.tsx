@@ -40,6 +40,23 @@ const SUBJECT_STRATEGIES: Record<
       hint: "Подходит для списков и заданий с однотипными подпунктами",
     },
   ],
+  english: [
+    {
+      key: "replace_context",
+      label: "Заменить текст или ситуацию",
+      hint: "Сохраняется формат чтения, аудирования или письма",
+    },
+    {
+      key: "synonymize_non_key_wording",
+      label: "Переформулировать задание",
+      hint: "Инструкция и язык ответа остаются понятными",
+    },
+    {
+      key: "reorder_enumeration",
+      label: "Перемешать пункты",
+      hint: "Для A-E, 1-4 и однотипных вариантов ответа",
+    },
+  ],
   math: [
     {
       key: "replace_numbers",
@@ -125,6 +142,23 @@ const SUBJECT_STRATEGIES: Record<
       hint: "Для тестов, списков признаков и классификаций",
     },
   ],
+  geography: [
+    {
+      key: "replace_context",
+      label: "Заменить географический объект",
+      hint: "Страна, регион, город или природный объект меняются на сопоставимые",
+    },
+    {
+      key: "change_names",
+      label: "Заменить названия",
+      hint: "Сохраняются карта, схема, таблица или климатограмма как тип опоры",
+    },
+    {
+      key: "reorder_enumeration",
+      label: "Перемешать соответствия",
+      hint: "Для списков объектов, ресурсов и обозначений на карте",
+    },
+  ],
   chemistry: [
     {
       key: "replace_numbers",
@@ -188,6 +222,7 @@ const SUBJECTS_WITH_NUMBERS = new Set<SubjectValue>([
   "math",
   "history",
   "biology",
+  "geography",
   "chemistry",
   "informatics",
   "physics",

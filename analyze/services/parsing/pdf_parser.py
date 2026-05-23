@@ -10,11 +10,17 @@ import pdfplumber
 
 from analyze.services.llm.client import GigaChatClient
 from analyze.services.llm.prompts.extraction_prompt import MATH_EXTRACTION_PROMPT
+from analyze.services.parsing.tesseract_ocr import TesseractOCR
 
 
 PDF_LINE_Y_TOLERANCE = 11.0
 PDF_MATH_OCR_DPI = int(os.getenv("PDF_MATH_OCR_DPI", "220"))
 PDF_MATH_OCR_ENABLED = os.getenv("PDF_MATH_OCR_ENABLED", "true").lower() not in {
+    "0",
+    "false",
+    "no",
+}
+PDF_TESSERACT_OCR_ENABLED = os.getenv("PDF_TESSERACT_OCR_ENABLED", "true").lower() not in {
     "0",
     "false",
     "no",
@@ -97,6 +103,7 @@ def _compact_pdf_line(text: str) -> str:
 class PDFParser:
     def __init__(self):
         self.gigachat = GigaChatClient()
+        self.tesseract = TesseractOCR()
         self.semaphore = asyncio.Semaphore(3)
 
     async def parse(self, file_bytes: bytes) -> str:
@@ -113,6 +120,10 @@ class PDFParser:
 
         if extracted_text:
             full_text.append(extracted_text)
+        elif PDF_TESSERACT_OCR_ENABLED:
+            ocr_text = await self._extract_pages_with_tesseract_ocr(doc)
+            if ocr_text:
+                return ocr_text
 
         for page_index in range(len(doc)):
             page = doc[page_index]
@@ -153,6 +164,27 @@ class PDFParser:
 
         page_results = await asyncio.gather(*page_tasks)
         return "\n\n".join(text for text in page_results if text)
+
+    async def _extract_pages_with_tesseract_ocr(self, doc: fitz.Document) -> str:
+        page_tasks = [
+            self._extract_page_with_tesseract_ocr_safe(page)
+            for page in doc
+        ]
+        if not page_tasks:
+            return ""
+
+        page_results = await asyncio.gather(*page_tasks)
+        return "\n\n".join(text for text in page_results if text)
+
+    async def _extract_page_with_tesseract_ocr_safe(self, page: fitz.Page) -> str:
+        async with self.semaphore:
+            try:
+                image_bytes = self._render_page_to_png(page)
+                result = self.tesseract.extract_text(image_bytes)
+                return result.text if result.accepted else ""
+            except Exception as error:
+                print(f"PDF page Tesseract OCR error on page {page.number + 1}: {error}")
+                return ""
 
     async def _extract_page_with_math_ocr_safe(self, page: fitz.Page) -> str:
         async with self.semaphore:
@@ -307,6 +339,10 @@ class PDFParser:
     async def _extract_image_text_safe(self, image_bytes: bytes) -> str:
         async with self.semaphore:
             try:
+                local_result = self.tesseract.extract_text(image_bytes)
+                if local_result.accepted:
+                    return local_result.text
+
                 return await self.gigachat.extract_text_from_image(image_bytes)
             except Exception as e:
                 print(f"PDF image extraction error: {e}")
