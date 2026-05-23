@@ -55,6 +55,7 @@
 - `python-dotenv` - загрузка `.env`.
 - `json-repair` - ремонт некорректного JSON от LLM.
 - `python-docx` - чтение DOCX и сборка DOCX-экспорта.
+- `python-pptx` - чтение PPTX-презентаций.
 - `pymupdf`, `pdfplumber` - извлечение текста из PDF.
 - `pillow` - работа с изображениями.
 - `python-multipart` - multipart upload.
@@ -431,13 +432,10 @@ analyze/services/export/docx_exporter.py
 
 - `.pdf`
 - `.docx`
+- `.pptx`
 - `.png`
 - `.jpg`
 - `.jpeg`
-- `.gif`
-- `.bmp`
-- `.tiff`
-- `.webp`
 - `.txt`
 
 Определение типа идет по:
@@ -446,13 +444,16 @@ analyze/services/export/docx_exporter.py
 - `Content-Type`;
 - magic bytes;
 - признаку DOCX как ZIP с `word/document.xml`;
+- признаку PPTX как ZIP с `ppt/presentation.xml`;
 - признакам изображения.
 
 Особенности:
 
 - DOCX читается не только через `python-docx`, но и через XML, чтобы не терять Word Math / Office Math формулы.
+- PPTX читается через `python-pptx` и XML слайдов; текст, таблицы и часть Office Math формул извлекаются в общий текст, изображения внутри слайдов идут через OCR.
 - PDF читается через Python PDF-библиотеки; качество зависит от того, есть ли в PDF текстовый слой.
 - Изображения идут через GigaChat vision OCR.
+- TXT декодируется через отдельный parser с поддержкой `utf-8`, `utf-8-sig`, `cp1251`, `koi8-r` и `latin-1`.
 - Несколько файлов в одной работе поддерживаются через одно multipart-поле `files`.
 
 ## База данных

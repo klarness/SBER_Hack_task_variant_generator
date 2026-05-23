@@ -38,6 +38,7 @@ func NewPythonClient(baseURL string, timeout time.Duration, logger *slog.Logger)
 func (c *PythonClient) Analyze(ctx context.Context, req domain.AnalyzeRequest) (*domain.AnalyzeResult, error) {
 	c.logger.InfoContext(ctx, "ai analyze request started",
 		"user_id", req.UserID.String(),
+		"subject", req.Subject,
 		"files_count", len(req.Files),
 		"text_bytes", len(req.Text),
 	)
@@ -47,6 +48,7 @@ func (c *PythonClient) Analyze(ctx context.Context, req domain.AnalyzeRequest) (
 
 	_ = writer.WriteField("user_id", req.UserID.String())
 	_ = writer.WriteField("title", req.Title)
+	_ = writer.WriteField("subject", req.Subject)
 	if len(req.Settings) > 0 {
 		_ = writer.WriteField("settings", string(req.Settings))
 	}

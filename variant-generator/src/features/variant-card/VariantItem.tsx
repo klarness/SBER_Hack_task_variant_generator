@@ -8,6 +8,7 @@ import {
 } from "@/shared/api/variants";
 import type { Task, VariantItem as VI } from "@/shared/types/domain";
 import { cn } from "@/shared/lib/cn";
+import { LatexText } from "@/shared/ui/LatexText";
 
 interface Props {
   taskId: string;
@@ -18,12 +19,12 @@ interface Props {
 
 export function VariantItem({
   taskId,
-  variantNumber,
   questionOrder,
   item,
 }: Props) {
   const qc = useQueryClient();
   const [localContent, setLocalContent] = useState(item.content);
+  const [isEditing, setIsEditing] = useState(false);
   const isFailed = item.status === "failed";
 
   const editMutation = useMutation({
@@ -66,6 +67,20 @@ export function VariantItem({
               />
             </span>
           )}
+          {!isFailed && (
+            <button
+              type="button"
+              onClick={() => setIsEditing((value) => !value)}
+              title={isEditing ? "Закрыть редактор" : "Редактировать"}
+              className={cn(
+                "w-8 h-8 inline-flex items-center justify-center rounded-lg",
+                "border border-border bg-white/60 backdrop-blur-sm",
+                "text-ink-600 hover:bg-surface-subtle hover:text-ink-900 transition"
+              )}
+            >
+              <Pencil size={14} strokeWidth={2} />
+            </button>
+          )}
           <button
             type="button"
             onClick={() => regenMutation.mutate()}
@@ -100,12 +115,20 @@ export function VariantItem({
               </div>
             </div>
           </div>
-        ) : (
+        ) : isEditing ? (
           <RichEditor
             value={localContent}
             onChange={setLocalContent}
-            onCommit={(html) => editMutation.mutate(html)}
+            onCommit={(html) => {
+              editMutation.mutate(html);
+              setIsEditing(false);
+            }}
             showToolbar={false}
+          />
+        ) : (
+          <LatexText
+            text={localContent}
+            className="text-sm text-ink-900 leading-relaxed"
           />
         )}
       </div>

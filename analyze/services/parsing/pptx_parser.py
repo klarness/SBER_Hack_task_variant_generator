@@ -4,19 +4,22 @@ import re
 import zipfile
 from xml.etree import ElementTree
 
-import docx
+from pptx import Presentation
 
 from analyze.services.llm.client import GigaChatClient
 from analyze.services.parsing.office_math import format_inline_math, omml_to_latex
 
 
-WORD_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+DRAWING_NS = "http://schemas.openxmlformats.org/drawingml/2006/main"
+PRESENTATION_NS = "http://schemas.openxmlformats.org/presentationml/2006/main"
 MATH_NS = "http://schemas.openxmlformats.org/officeDocument/2006/math"
 
 NS = {
-    "w": WORD_NS,
+    "a": DRAWING_NS,
+    "p": PRESENTATION_NS,
     "m": MATH_NS,
 }
+
 
 MATH_PROPERTY_NODES = {
     "accPr",
@@ -74,6 +77,8 @@ def _clean_text(text: str) -> str:
 def _clean_math_text(text: str) -> str:
     replacements = {
         "\u2212": "-",
+        "\u2013": "-",
+        "\u2014": "-",
         "\u00d7": "*",
         "\u2219": "*",
         "\u22c5": "*",
@@ -86,27 +91,29 @@ def _clean_math_text(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
-class DOCXParser:
+class PPTXParser:
     def __init__(self):
         self.gigachat = GigaChatClient()
         self.semaphore = asyncio.Semaphore(3)
 
     async def parse(self, file_bytes: bytes) -> str:
-        file_stream = io.BytesIO(file_bytes)
+        presentation = Presentation(io.BytesIO(file_bytes))
 
-        document = docx.Document(file_stream)
-
-        full_text = self._extract_document_text(file_bytes, document)
+        full_text = self._extract_presentation_text(file_bytes)
 
         image_tasks = []
 
-        for rel in document.part.rels.values():
-            if "image" in rel.target_ref:
-                image_bytes = rel.target_part.blob
+        for slide in presentation.slides:
+            for shape in slide.shapes:
+                if hasattr(shape, "image"):
+                    try:
+                        image_bytes = shape.image.blob
 
-                image_tasks.append(
-                    self._extract_image_text_safe(image_bytes)
-                )
+                        image_tasks.append(
+                            self._extract_image_text_safe(image_bytes)
+                        )
+                    except Exception:
+                        pass
 
         if image_tasks:
             image_results = await asyncio.gather(*image_tasks)
@@ -117,55 +124,83 @@ class DOCXParser:
 
         return "\n".join(full_text)
 
-    def _extract_document_text(self, file_bytes: bytes, document: docx.Document) -> list[str]:
+    def _extract_presentation_text(self, file_bytes: bytes) -> list[str]:
         try:
-            return self._extract_document_xml_text(file_bytes)
+            return self._extract_presentation_xml_text(file_bytes)
         except Exception as error:
-            print(f"DOCX XML text extraction error: {error}")
+            print(f"PPTX XML text extraction error: {error}")
 
-            return [
-                text
-                for text in (paragraph.text.strip() for paragraph in document.paragraphs)
-                if text
-            ]
+            return self._fallback_extract_text(file_bytes)
 
-    def _extract_document_xml_text(self, file_bytes: bytes) -> list[str]:
+    def _extract_presentation_xml_text(self, file_bytes: bytes) -> list[str]:
         with zipfile.ZipFile(io.BytesIO(file_bytes)) as archive:
-            document_xml = archive.read("word/document.xml")
+            slide_files = sorted(
+                [
+                    name
+                    for name in archive.namelist()
+                    if re.match(r"ppt/slides/slide\d+\.xml", name)
+                ],
+                key=lambda value: int(re.search(r"slide(\d+)\.xml", value).group(1)),
+            )
 
-        root = ElementTree.fromstring(document_xml)
-        body = root.find("w:body", NS)
+            parts = []
 
-        if body is None:
-            return []
+            for slide_file in slide_files:
+                slide_xml = archive.read(slide_file)
 
+                root = ElementTree.fromstring(slide_xml)
+
+                slide_parts = self._extract_slide_text(root)
+
+                if slide_parts:
+                    parts.append("\n".join(slide_parts))
+
+            return parts
+
+    def _extract_slide_text(self, root: ElementTree.Element) -> list[str]:
         parts = []
 
-        for child in body:
-            local_name = _local_name(child.tag)
+        for shape in root.findall(".//p:sp", NS):
+            text = self._extract_shape_text(shape)
 
-            if local_name == "p":
-                text = self._extract_paragraph_text(child)
+            if text:
+                parts.append(text)
 
-                if text:
-                    parts.append(text)
-
-            if local_name == "tbl":
-                parts.extend(self._extract_table_text(child))
+        for table in root.findall(".//a:tbl", NS):
+            parts.extend(self._extract_table_text(table))
 
         return parts
+
+    def _extract_shape_text(self, shape: ElementTree.Element) -> str:
+        chunks = []
+
+        for paragraph in shape.findall(".//a:p", NS):
+            paragraph_chunks = []
+
+            self._walk_text_node(paragraph, paragraph_chunks)
+
+            text = _clean_text("".join(paragraph_chunks))
+
+            if text:
+                chunks.append(text)
+
+        return "\n".join(chunks)
 
     def _extract_table_text(self, table: ElementTree.Element) -> list[str]:
         rows = []
 
-        for row in table.findall(".//w:tr", NS):
+        for row in table.findall(".//a:tr", NS):
             cells = []
 
-            for cell in row.findall("./w:tc", NS):
+            for cell in row.findall("./a:tc", NS):
                 paragraphs = []
 
-                for paragraph in cell.findall(".//w:p", NS):
-                    text = self._extract_paragraph_text(paragraph)
+                for paragraph in cell.findall(".//a:p", NS):
+                    paragraph_chunks = []
+
+                    self._walk_text_node(paragraph, paragraph_chunks)
+
+                    text = _clean_text("".join(paragraph_chunks))
 
                     if text:
                         paragraphs.append(text)
@@ -178,13 +213,11 @@ class DOCXParser:
 
         return rows
 
-    def _extract_paragraph_text(self, paragraph: ElementTree.Element) -> str:
-        chunks = []
-        self._walk_paragraph_node(paragraph, chunks)
-
-        return _clean_text("".join(chunks))
-
-    def _walk_paragraph_node(self, node: ElementTree.Element, chunks: list[str]) -> None:
+    def _walk_text_node(
+        self,
+        node: ElementTree.Element,
+        chunks: list[str],
+    ) -> None:
         namespace = _namespace(node.tag)
         local_name = _local_name(node.tag)
 
@@ -196,20 +229,16 @@ class DOCXParser:
 
             return
 
-        if namespace == WORD_NS and local_name == "t":
+        if namespace == DRAWING_NS and local_name == "t":
             chunks.append(node.text or "")
             return
 
-        if namespace == WORD_NS and local_name == "tab":
-            chunks.append("\t")
-            return
-
-        if namespace == WORD_NS and local_name in {"br", "cr"}:
+        if namespace == DRAWING_NS and local_name == "br":
             chunks.append("\n")
             return
 
         for child in node:
-            self._walk_paragraph_node(child, chunks)
+            self._walk_text_node(child, chunks)
 
     def _omml_to_text(self, node: ElementTree.Element) -> str:
         local_name = _local_name(node.tag)
@@ -254,7 +283,11 @@ class DOCXParser:
             expression = self._math_child_text(node, "e")
 
             if expression:
-                return f"root({degree}, {expression})" if degree else f"sqrt({expression})"
+                return (
+                    f"root({degree}, {expression})"
+                    if degree
+                    else f"sqrt({expression})"
+                )
 
         if local_name == "d":
             expression = self._math_child_text(node, "e")
@@ -281,6 +314,7 @@ class DOCXParser:
             lower = self._math_child_text(node, "sub")
             upper = self._math_child_text(node, "sup")
             expression = self._math_child_text(node, "e")
+
             limits = ""
 
             if lower or upper:
@@ -290,17 +324,41 @@ class DOCXParser:
 
         return "".join(self._omml_to_text(child) for child in node)
 
-    def _math_child_text(self, node: ElementTree.Element, child_name: str) -> str:
+    def _math_child_text(
+        self,
+        node: ElementTree.Element,
+        child_name: str,
+    ) -> str:
         for child in node:
             if _local_name(child.tag) == child_name:
                 return _clean_math_text(self._omml_to_text(child))
 
         return ""
 
+    def _fallback_extract_text(self, file_bytes: bytes) -> list[str]:
+        presentation = Presentation(io.BytesIO(file_bytes))
+
+        parts = []
+
+        for slide in presentation.slides:
+            slide_parts = []
+
+            for shape in slide.shapes:
+                if hasattr(shape, "text"):
+                    text = _clean_text(shape.text)
+
+                    if text:
+                        slide_parts.append(text)
+
+            if slide_parts:
+                parts.append("\n".join(slide_parts))
+
+        return parts
+
     async def _extract_image_text_safe(self, image_bytes: bytes) -> str:
         async with self.semaphore:
             try:
                 return await self.gigachat.extract_text_from_image(image_bytes)
             except Exception as e:
-                print(f"DOCX image extraction error: {e}")
+                print(f"PPTX image extraction error: {e}")
                 return ""

@@ -177,6 +177,19 @@ body {
   @apply text-ink-500 pointer-events-none float-left h-0;
 }
 
+.latex-text {
+  overflow-wrap: anywhere;
+}
+.latex-inline {
+  display: inline;
+  vertical-align: baseline;
+}
+.latex-inline .katex {
+  font-size: 1em;
+  line-height: inherit;
+  vertical-align: baseline;
+}
+
 @keyframes shimmer {
   0% {
     background-position: -1000px 0;

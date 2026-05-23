@@ -84,6 +84,7 @@ func (h *Handlers) CreateTask(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 	h.logger.InfoContext(r.Context(), "create task request parsed",
 		"user_id", userID.String(),
 		"title", r.FormValue("title"),
+		"subject", r.FormValue("subject"),
 		"files_count", len(files),
 		"text_bytes", len(r.FormValue("text")),
 		"variant_count", variantCount,
@@ -92,6 +93,7 @@ func (h *Handlers) CreateTask(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 	task, err := h.orchestrator.StartGeneration(r.Context(), service.StartGenerationRequest{
 		UserID:       userID,
 		Title:        r.FormValue("title"),
+		Subject:      r.FormValue("subject"),
 		Settings:     settings,
 		Files:        files,
 		Text:         r.FormValue("text"),

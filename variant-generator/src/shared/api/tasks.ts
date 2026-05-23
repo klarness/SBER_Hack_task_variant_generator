@@ -3,6 +3,7 @@ import type { ExportResult, Task, TaskSettings } from "@/shared/types/domain";
 
 export interface CreateTaskInput {
   title: string;
+  subject: string;
   text?: string;
   files: File[];
   settings: TaskSettings;
@@ -12,6 +13,7 @@ export interface CreateTaskInput {
 export async function createTask(input: CreateTaskInput): Promise<Task> {
   const fd = new FormData();
   fd.append("title", input.title);
+  fd.append("subject", input.subject);
   if (input.text) fd.append("text", input.text);
   fd.append("settings", JSON.stringify(input.settings));
   fd.append("variant_count", String(input.variantCount));

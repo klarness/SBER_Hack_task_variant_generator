@@ -25,6 +25,7 @@ class GenerateRequest(BaseModel):
     user_id: str
     task_id: str
     task_item_id: str
+    subject: str = ""
     variant_number: int = 1
     order: int = 1
     context: str = ""
@@ -41,6 +42,7 @@ class ValidateRequest(BaseModel):
     user_id: str
     task_id: str
     task_item_id: str
+    subject: str = ""
     variant_number: int = 1
     original: str
     generated: str

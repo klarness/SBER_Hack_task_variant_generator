@@ -1,5 +1,7 @@
 import re
 
+from analyze.services.parsing.math_markup import normalize_math_markup
+
 
 class TextNormalizer:
     @staticmethod
@@ -10,6 +12,7 @@ class TextNormalizer:
         text = TextNormalizer._remove_page_meta(text)
         text = TextNormalizer._remove_ocr_artifacts(text)
         text = TextNormalizer._normalize_choice_markers(text)
+        text = normalize_math_markup(text)
 
         text = re.sub(r"-\n(?=\w)", "", text)
         text = re.sub(r"\r\n?", "\n", text)

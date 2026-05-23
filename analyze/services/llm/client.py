@@ -2,16 +2,21 @@ import asyncio
 import base64
 import json
 import os
-import random
 import re
 import time
 from typing import Any
 
 from dotenv import load_dotenv
 from gigachat import GigaChat
+from gigachat.models import Chat, Messages, MessagesRole
 from json_repair import repair_json
 
 from analyze.services.llm.prompts.extraction_prompt import EXTRACTION_PROMPT
+from analyze.services.llm.prompts.generation_prompts import (
+    build_generate_prompt,
+    build_validate_prompt,
+)
+from analyze.services.llm.prompts.subject_prompts import subject_prompt
 
 load_dotenv()
 
@@ -47,9 +52,11 @@ class GigaChatClient:
         *,
         original_text: str,
         title: str,
+        subject: str,
         settings: dict[str, Any],
     ) -> dict[str, Any]:
         settings = normalize_generation_settings(settings)
+        subject_profile = subject_prompt(subject)
         return await self.chat_json(
             system=(
                 "Ты анализируешь школьные задания для генератора вариантов. "
@@ -72,8 +79,11 @@ class GigaChatClient:
                 "- не добавляй новые задания;\n"
                 "- context используй только для общего условия;\n"
                 "- content должен содержать конкретный вопрос/задание;\n"
-                "- порядок заданий сохрани.\n\n"
+                "- порядок заданий сохрани;\n"
+                "- если предмет передан учителем, используй его как основной источник истины.\n\n"
                 f"Название: {title}\n"
+                f"Заявленный предмет: {subject or 'не указан'}\n"
+                f"{subject_profile}\n"
                 f"Параметры мультипликации:\n{render_generation_settings(settings)}\n"
                 f"Исходный текст:\n{original_text}"
             ),
@@ -84,39 +94,22 @@ class GigaChatClient:
         settings = normalize_generation_settings(request.get("settings") or {})
         previous_variants = normalize_previous_variants(request.get("previous_variants"))
         request = {**request, "settings": settings, "previous_variants": previous_variants}
-        strategy = random.choice(
-            [
-                "замени числовые данные и проверь, что сложность остается прежней",
-                "замени жизненный контекст, но сохрани предметную логику",
-                "измени имена, объекты и обозначения",
-                "перестрой формулировку условия без изменения дидактической цели",
-                "измени порядок перечисления условий или действий, если это не ломает логику",
-            ]
+
+        settings_text = render_generation_settings(settings)
+        previous_variants_text = render_previous_variants(previous_variants)
+        subject_profile = subject_prompt(str(request.get("subject") or ""))
+        system_prompt, user_prompt = build_generate_prompt(
+            request=request,
+            settings_text=settings_text,
+            previous_variants_text=previous_variants_text,
+            strategy=select_generation_strategy(settings),
+            subject_profile=subject_profile,
         )
 
         response = await self.chat_json(
-            system=(
-                "Ты генерируешь новый вариант школьного задания. "
-                "Верни только валидный JSON без markdown и пояснений. "
-                f"Обязательная стратегия этой попытки: {strategy}. "
-                "Каждый вариант должен заметно отличаться от исходного и от типовых минимальных замен."
-                "\n\nКРИТИЧЕСКИ ВАЖНО: новый вариант не должен совпадать с уже созданными вариантами для этого же задания. "
-                "Не повторяй те же числовые значения, имена, объекты и формулировки, если их можно изменить без потери смысла."
-            ),
-            user=(
-                "Сгенерируй альтернативное задание той же темы, типа и сложности.\n"
-                "JSON schema ответа: {\"content\": \"string\"}\n"
-                "Правила:\n"
-                "- не решай задание;\n"
-                "- сохрани дидактическую цель;\n"
-                "- не упрощай и не усложняй;\n"
-                "- не ограничивайся минимальной заменой одного числа, если настройки разрешают более широкую вариацию;\n"
-                "- не добавляй пояснения вне JSON.\n\n"
-                f"Параметры мультипликации:\n{render_generation_settings(settings)}\n"
-                f"Входные данные JSON:\n{json.dumps(request, ensure_ascii=False)}"
-                f"\n\nУже созданные варианты для этого же задания:\n{render_previous_variants(previous_variants)}"
-            ),
-            temperature=0.7,
+            system=system_prompt,
+            user=user_prompt,
+            temperature=0.45,
         )
         content = response.get("content")
         if not isinstance(content, str) or not content.strip():
@@ -130,31 +123,19 @@ class GigaChatClient:
             return False
 
         request = {**request, "settings": settings, "previous_variants": previous_variants}
+        settings_text = render_generation_settings(settings)
+        previous_variants_text = render_previous_variants(previous_variants)
+        subject_profile = subject_prompt(str(request.get("subject") or ""))
+        system_prompt, user_prompt = build_validate_prompt(
+            request=request,
+            settings_text=settings_text,
+            previous_variants_text=previous_variants_text,
+            subject_profile=subject_profile,
+        )
+
         response = await self.chat_json(
-            system=(
-                "Ты проверяешь качество сгенерированного варианта задания. "
-                "Верни только валидный JSON без markdown и пояснений."
-                "\n\nКРИТИЧЕСКИ ВАЖНО: верни false, если generated полностью совпадает с любым уже созданным вариантом "
-                "для этого же задания или повторяет его без содержательных отличий."
-            ),
-            user=(
-                "Проверь, можно ли принять generated как вариант original.\n"
-                "JSON schema ответа: {\"valid\": true}\n"
-                "Критерии:\n"
-                "- тип задания сохранен;\n"
-                "- сложность примерно та же;\n"
-                "- задание не является дословной копией;\n"
-                "- логика и дидактическая цель сохранены;\n"
-                "- формулировка понятна.\n"
-                "Важно:\n"
-                "- разные числа, имена, объекты и другой правильный ответ допустимы;\n"
-                "- не требуй, чтобы generated имел тот же ответ, что original;\n"
-                "- верни false только если generated относится к другой теме, содержит решение, "
-                "существенно меняет сложность, непонятен или почти дословно копирует original.\n\n"
-                f"Параметры мультипликации:\n{render_generation_settings(settings)}\n"
-                f"Данные JSON:\n{json.dumps(request, ensure_ascii=False)}"
-                f"\n\nУже созданные варианты для этого же задания:\n{render_previous_variants(previous_variants)}"
-            ),
+            system=system_prompt,
+            user=user_prompt,
             temperature=0,
         )
         valid = response.get("valid")
@@ -162,17 +143,23 @@ class GigaChatClient:
             raise ValueError("GigaChat response does not contain boolean valid.")
         return valid
 
-    async def extract_text_from_image(self, image_bytes: bytes) -> str:
-        image_base64 = base64.b64encode(image_bytes).decode()
-        content = await self.chat_text(
-            system=EXTRACTION_PROMPT,
-            user=[
-                {"type": "text", "text": "Извлеки текст с изображения дословно."},
-                {
-                    "type": "image_url",
-                    "image_url": {"url": f"data:image/png;base64,{image_base64}"},
-                },
-            ],
+    async def extract_text_from_image(
+        self,
+        image_bytes: bytes,
+        image_type: str = "png",
+        *,
+        system_prompt: str = EXTRACTION_PROMPT,
+        user_prompt: str = "Extract all visible text from the attached image exactly. Return only extracted text.",
+    ) -> str:
+        normalized_type = "jpeg" if image_type in {"jpg", "jpeg"} else "png"
+        extension = "jpg" if normalized_type == "jpeg" else "png"
+
+        content = await self.chat_text_with_attachment(
+            system=system_prompt,
+            user=user_prompt,
+            file_name=f"source.{extension}",
+            file_content=image_bytes,
+            file_content_type=f"image/{normalized_type}",
             model=self.vision_model,
             temperature=0,
         )
@@ -184,7 +171,7 @@ class GigaChatClient:
         self,
         *,
         system: str,
-        user: str | list[dict[str, Any]],
+        user: str,
         temperature: float = 0,
     ) -> dict[str, Any]:
         content = await self.chat_text(system=system, user=user, temperature=temperature)
@@ -194,7 +181,7 @@ class GigaChatClient:
         self,
         *,
         system: str,
-        user: str | list[dict[str, Any]],
+        user: str,
         model: str | None = None,
         temperature: float = 0,
     ) -> str:
@@ -217,6 +204,52 @@ class GigaChatClient:
                 verify_ssl_certs=self.verify_ssl_certs,
             ) as giga:
                 response = await giga.achat(payload)
+
+        return response.choices[0].message.content
+
+    async def chat_text_with_attachment(
+        self,
+        *,
+        system: str,
+        user: str,
+        file_name: str,
+        file_content: bytes,
+        file_content_type: str,
+        model: str | None = None,
+        temperature: float = 0,
+    ) -> str:
+        async with _REQUEST_LIMITER:
+            token = await self._access_token()
+
+            async with GigaChat(
+                access_token=token,
+                scope=self.scope,
+                timeout=self.timeout,
+                verify_ssl_certs=self.verify_ssl_certs,
+            ) as giga:
+                uploaded = await giga.aupload_file(
+                    (file_name, file_content, file_content_type),
+                    purpose="general",
+                )
+                try:
+                    payload = Chat(
+                        model=model or self.model,
+                        messages=[
+                            Messages(role=MessagesRole.SYSTEM, content=system),
+                            Messages(
+                                role=MessagesRole.USER,
+                                content=user,
+                                attachments=[uploaded.id_],
+                            ),
+                        ],
+                        temperature=temperature,
+                    )
+                    response = await giga.achat(payload)
+                finally:
+                    try:
+                        await giga.adelete_file(uploaded.id_)
+                    except Exception:
+                        pass
 
         return response.choices[0].message.content
 
@@ -363,6 +396,45 @@ def render_generation_settings(settings: dict[str, Any]) -> str:
             "- не менять ключевые математические/предметные связи и не добавлять решение в текст задания.",
         ]
     )
+
+
+def select_generation_strategy(settings: dict[str, Any]) -> str:
+    strategy_by_type = {
+        "replace_numbers": (
+            "Меняй только числовые значения и связанные с ними обозначения. "
+            "Не меняй сюжет, тип действия и количество подпунктов."
+        ),
+        "reorder_enumeration": (
+            "Можно переставить порядок однотипных пунктов или условий, если это не меняет смысл. "
+            "Не добавляй новые пункты."
+        ),
+        "synonymize_non_key_wording": (
+            "Можно мягко переформулировать неключевые слова. "
+            "Термины, формулы, условия и формат задания сохрани."
+        ),
+        "replace_context": (
+            "Можно заменить жизненный или предметный контекст на аналогичный. "
+            "Математическую/предметную логику и сложность сохрани."
+        ),
+        "change_names": (
+            "Можно заменить имена, названия объектов и буквенные обозначения. "
+            "Числовые зависимости и тип задания сохрани, если другие изменения не разрешены."
+        ),
+        "change_units": (
+            "Можно заменить единицы измерения только так, чтобы сложность и смысл остались сопоставимыми."
+        ),
+        "reorder_steps": (
+            "Можно переставить шаги только в многошаговой инструкции, если новый порядок логически корректен."
+        ),
+    }
+    selected = [
+        strategy_by_type[item]
+        for item in settings.get("variation_types", [])
+        if item in strategy_by_type
+    ]
+    if not selected:
+        selected = [strategy_by_type["replace_numbers"]]
+    return "\n".join(f"- {item}" for item in selected)
 
 
 def normalize_previous_variants(value: Any) -> list[str]:

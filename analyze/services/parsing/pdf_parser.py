@@ -1,5 +1,6 @@
 import asyncio
 import io
+import os
 import re
 import statistics
 import unicodedata
@@ -8,9 +9,16 @@ import fitz
 import pdfplumber
 
 from analyze.services.llm.client import GigaChatClient
+from analyze.services.llm.prompts.extraction_prompt import MATH_EXTRACTION_PROMPT
 
 
 PDF_LINE_Y_TOLERANCE = 11.0
+PDF_MATH_OCR_DPI = int(os.getenv("PDF_MATH_OCR_DPI", "220"))
+PDF_MATH_OCR_ENABLED = os.getenv("PDF_MATH_OCR_ENABLED", "true").lower() not in {
+    "0",
+    "false",
+    "no",
+}
 
 
 def _normalize_pdf_token(text: str) -> str:
@@ -94,6 +102,11 @@ class PDFParser:
     async def parse(self, file_bytes: bytes) -> str:
         doc = fitz.open(stream=file_bytes, filetype="pdf")
 
+        if PDF_MATH_OCR_ENABLED:
+            ocr_text = await self._extract_pages_with_math_ocr(doc)
+            if ocr_text:
+                return ocr_text
+
         full_text = []
         image_tasks = []
         extracted_text = self._extract_text_with_pdfplumber(file_bytes)
@@ -129,6 +142,40 @@ class PDFParser:
                     full_text.append(text)
 
         return "\n".join(full_text)
+
+    async def _extract_pages_with_math_ocr(self, doc: fitz.Document) -> str:
+        page_tasks = [
+            self._extract_page_with_math_ocr_safe(page)
+            for page in doc
+        ]
+        if not page_tasks:
+            return ""
+
+        page_results = await asyncio.gather(*page_tasks)
+        return "\n\n".join(text for text in page_results if text)
+
+    async def _extract_page_with_math_ocr_safe(self, page: fitz.Page) -> str:
+        async with self.semaphore:
+            try:
+                image_bytes = self._render_page_to_png(page)
+                return await self.gigachat.extract_text_from_image(
+                    image_bytes,
+                    image_type="png",
+                    system_prompt=MATH_EXTRACTION_PROMPT,
+                    user_prompt=(
+                        "Распознай страницу PDF. Верни весь текст, а все формулы и математические выражения "
+                        "оформи в LaTeX внутри $...$. Не решай задания."
+                    ),
+                )
+            except Exception as error:
+                print(f"PDF page math OCR error on page {page.number + 1}: {error}")
+                return ""
+
+    def _render_page_to_png(self, page: fitz.Page) -> bytes:
+        zoom = PDF_MATH_OCR_DPI / 72
+        matrix = fitz.Matrix(zoom, zoom)
+        pixmap = page.get_pixmap(matrix=matrix, alpha=False)
+        return pixmap.tobytes("png")
 
     def _extract_text_with_pdfplumber(self, file_bytes: bytes) -> str:
         try:

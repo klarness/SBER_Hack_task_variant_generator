@@ -58,6 +58,8 @@ services:
       GIGACHAT_TIMEOUT: "${GIGACHAT_TIMEOUT:-60.0}"
       GIGACHAT_VERIFY_SSL_CERTS: "${GIGACHAT_VERIFY_SSL_CERTS:-false}"
       GIGACHAT_CONCURRENCY: "${GIGACHAT_CONCURRENCY:-1}"
+      PDF_MATH_OCR_ENABLED: "${PDF_MATH_OCR_ENABLED:-true}"
+      PDF_MATH_OCR_DPI: "${PDF_MATH_OCR_DPI:-220}"
     ports:
       - "8000:8000"
     restart: unless-stopped

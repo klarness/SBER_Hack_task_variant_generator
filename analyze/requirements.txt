@@ -10,3 +10,6 @@ pydantic-settings
 gigachat
 python-dotenv
 json-repair
+python-pptx
+latex2mathml
+mathml2omml

@@ -13,6 +13,9 @@ const ACCEPT = {
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [
     ".docx",
   ],
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation": [
+    ".pptx",
+  ],
   "image/png": [".png"],
   "image/jpeg": [".jpg", ".jpeg"],
 };
@@ -51,7 +54,7 @@ export function UploadDropzone({ files, onChange }: Props) {
             : "Перетащите файлы или нажмите"}
         </p>
         <p className="mt-1 text-xs text-ink-500">
-          PDF, DOCX, PNG, JPG
+          PDF, DOCX, PPTX, TXT, PNG, JPG
         </p>
       </div>
 

@@ -23,6 +23,7 @@ type Orchestrator struct {
 type StartGenerationRequest struct {
 	UserID       uuid.UUID
 	Title        string
+	Subject      string
 	Settings     []byte
 	Files        []domain.UploadedFile
 	Text         string
@@ -58,6 +59,7 @@ func (o *Orchestrator) StartGeneration(ctx context.Context, req StartGenerationR
 		ID:           uuid.New(),
 		UserID:       req.UserID,
 		Title:        req.Title,
+		Subject:      req.Subject,
 		OriginalText: "",
 		Settings:     req.Settings,
 		Status:       domain.TaskStatusProcessing,
@@ -75,6 +77,7 @@ func (o *Orchestrator) StartGeneration(ctx context.Context, req StartGenerationR
 		"user_id", req.UserID.String(),
 		"task_id", task.ID.String(),
 		"title", req.Title,
+		"subject", req.Subject,
 		"files_count", len(req.Files),
 		"text_bytes", len(req.Text),
 		"variant_count", req.VariantCount,
@@ -107,6 +110,7 @@ func (o *Orchestrator) runGeneration(taskID uuid.UUID, req StartGenerationReques
 	analysis, err := o.ai.Analyze(ctx, domain.AnalyzeRequest{
 		UserID:   req.UserID,
 		Title:    req.Title,
+		Subject:  req.Subject,
 		Settings: req.Settings,
 		Files:    req.Files,
 		Text:     req.Text,
@@ -272,6 +276,7 @@ func (o *Orchestrator) generateAndValidate(ctx context.Context, task *domain.Tas
 				UserID:           task.UserID,
 				TaskID:           task.ID,
 				TaskItemID:       sourceItem.ID,
+				Subject:          task.Subject,
 				VariantNumber:    variantNumber,
 				Order:            sourceItem.Order,
 				Context:          sourceItem.Context,
@@ -287,6 +292,7 @@ func (o *Orchestrator) generateAndValidate(ctx context.Context, task *domain.Tas
 				UserID:           task.UserID,
 				TaskID:           task.ID,
 				TaskItemID:       sourceItem.ID,
+				Subject:          task.Subject,
 				VariantNumber:    variantNumber,
 				Original:         sourceItem.Content,
 				Generated:        item.Content,

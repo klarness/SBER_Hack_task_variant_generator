@@ -21,6 +21,7 @@ from analyze.services.export.docx_exporter import (
     content_disposition,
 )
 from analyze.services.llm.client import GigaChatClient
+from analyze.services.parsing.math_markup import normalize_math_markup
 from analyze.services.parsing.extraction import FileExtractionService
 from analyze.services.parsing.normalizer import TextNormalizer
 
@@ -49,7 +50,12 @@ async def parse(file: UploadFile = File(...)):
             detail=f"File too large: {size} bytes, max allowed is {MAX_PARSE_FILE_SIZE} bytes",
         )
 
-    raw_text = await extraction_service.parse(file)
+    try:
+        raw_text = await extraction_service.parse(file)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"File parsing failed: {exc}") from exc
     normalized_text = TextNormalizer.normalize(raw_text)
     return ParseResponse(raw_text=raw_text, normalized_text=normalized_text)
 
@@ -59,13 +65,20 @@ async def analyze(
     files: list[UploadFile] | None = File(default=None),
     text: str = Form(default=""),
     title: str = Form(default=""),
+    subject: str = Form(default=""),
     settings: str = Form(default="{}"),
     user_id: str = Form(default=""),
 ):
     parsed_parts: list[str] = []
 
     for file in files or []:
-        raw_text = await extraction_service.parse(file)
+        try:
+            raw_text = await extraction_service.parse(file)
+        except HTTPException:
+            raise
+        except Exception as exc:
+            filename = file.filename or "uploaded file"
+            raise HTTPException(status_code=502, detail=f"File parsing failed for {filename}: {exc}") from exc
         normalized_text = TextNormalizer.normalize(raw_text)
         if normalized_text:
             parsed_parts.append(normalized_text)
@@ -81,6 +94,7 @@ async def analyze(
         llm_result = await llm_client.analyze_task(
             original_text=original_text,
             title=title,
+            subject=subject,
             settings=_parse_settings(settings),
         )
     except Exception as exc:
@@ -89,7 +103,7 @@ async def analyze(
     return AnalyzeResponse(
         original_text=original_text,
         items=_parse_llm_items(llm_result),
-        subject=str(llm_result.get("subject") or ""),
+        subject=subject or str(llm_result.get("subject") or ""),
         topic=str(llm_result.get("topic") or ""),
         task_type=str(llm_result.get("task_type") or ""),
         difficulty=str(llm_result.get("difficulty") or ""),
@@ -106,7 +120,7 @@ async def generate(request: GenerateRequest):
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"GigaChat generate failed: {exc}") from exc
 
-    return GenerateResponse(content=_plain_text(content))
+    return GenerateResponse(content=normalize_math_markup(_plain_text(content)))
 
 
 @app.post("/validate", response_model=ValidateResponse)
@@ -182,7 +196,7 @@ def _first_text(source: dict[str, Any], *keys: str) -> str:
         value = source.get(key)
 
         if isinstance(value, str) and value.strip():
-            return _plain_text(value)
+            return normalize_math_markup(_plain_text(value))
 
     return ""
 
