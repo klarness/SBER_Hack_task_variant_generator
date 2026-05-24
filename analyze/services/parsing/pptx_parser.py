@@ -7,8 +7,10 @@ from xml.etree import ElementTree
 from pptx import Presentation
 
 from analyze.services.llm.client import GigaChatClient
+from analyze.services.llm.prompts.extraction_prompt import MATH_EXTRACTION_PROMPT
+from analyze.services.parsing.image_conversion import extract_wmf_text, is_wmf_image, prepare_image_for_ocr
 from analyze.services.parsing.office_math import format_inline_math, omml_to_latex
-from analyze.services.parsing.tesseract_ocr import TesseractOCR
+from analyze.services.parsing.tesseract_ocr import TesseractOCR, is_math_heavy_subject
 
 
 DRAWING_NS = "http://schemas.openxmlformats.org/drawingml/2006/main"
@@ -98,7 +100,7 @@ class PPTXParser:
         self.tesseract = TesseractOCR()
         self.semaphore = asyncio.Semaphore(3)
 
-    async def parse(self, file_bytes: bytes) -> str:
+    async def parse(self, file_bytes: bytes, subject: str = "") -> str:
         presentation = Presentation(io.BytesIO(file_bytes))
 
         full_text = self._extract_presentation_text(file_bytes)
@@ -110,9 +112,16 @@ class PPTXParser:
                 if hasattr(shape, "image"):
                     try:
                         image_bytes = shape.image.blob
+                        content_type = getattr(shape.image, "content_type", "")
+                        filename = getattr(shape.image, "filename", "")
 
                         image_tasks.append(
-                            self._extract_image_text_safe(image_bytes)
+                            self._extract_image_text_safe(
+                                image_bytes,
+                                subject=subject,
+                                content_type=content_type,
+                                filename=str(filename),
+                            )
                         )
                     except Exception:
                         pass
@@ -357,14 +366,40 @@ class PPTXParser:
 
         return parts
 
-    async def _extract_image_text_safe(self, image_bytes: bytes) -> str:
+    async def _extract_image_text_safe(
+        self,
+        image_bytes: bytes,
+        subject: str = "",
+        content_type: str = "",
+        filename: str = "",
+    ) -> str:
         async with self.semaphore:
             try:
-                local_result = self.tesseract.extract_text(image_bytes)
+                if is_wmf_image(image_bytes, content_type=content_type, filename=filename):
+                    wmf_text = extract_wmf_text(image_bytes)
+                    if wmf_text:
+                        return wmf_text
+
+                image_bytes, image_type = prepare_image_for_ocr(
+                    image_bytes,
+                    content_type=content_type,
+                    filename=filename,
+                )
+                if not image_bytes or not image_type:
+                    return ""
+
+                local_result = self.tesseract.extract_text(image_bytes, subject=subject)
                 if local_result.accepted:
                     return local_result.text
 
-                return await self.gigachat.extract_text_from_image(image_bytes)
+                if is_math_heavy_subject(subject):
+                    return await self.gigachat.extract_text_from_image(
+                        image_bytes,
+                        image_type=image_type,
+                        system_prompt=MATH_EXTRACTION_PROMPT,
+                    )
+
+                return await self.gigachat.extract_text_from_image(image_bytes, image_type=image_type)
             except Exception as e:
                 print(f"PPTX image extraction error: {e}")
                 return ""

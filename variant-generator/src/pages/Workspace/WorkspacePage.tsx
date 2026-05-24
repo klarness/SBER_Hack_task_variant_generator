@@ -47,7 +47,13 @@ export function WorkspacePage() {
 
         <div className="w-px h-6 bg-border" />
 
-        {task && <ExportBar taskId={task.id} title={task.title} />}
+        {task && (
+          <ExportBar
+            taskId={task.id}
+            title={task.title}
+            variants={task.variants ?? []}
+          />
+        )}
 
         {!isMock && task && task.status !== "done" && (
           <StatusPill status={task.status} />

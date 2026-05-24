@@ -7,8 +7,10 @@ from xml.etree import ElementTree
 import docx
 
 from analyze.services.llm.client import GigaChatClient
+from analyze.services.llm.prompts.extraction_prompt import MATH_EXTRACTION_PROMPT
+from analyze.services.parsing.image_conversion import extract_wmf_text, is_wmf_image, prepare_image_for_ocr
 from analyze.services.parsing.office_math import format_inline_math, omml_to_latex
-from analyze.services.parsing.tesseract_ocr import TesseractOCR
+from analyze.services.parsing.tesseract_ocr import TesseractOCR, is_math_heavy_subject
 
 
 WORD_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
@@ -93,35 +95,45 @@ class DOCXParser:
         self.tesseract = TesseractOCR()
         self.semaphore = asyncio.Semaphore(3)
 
-    async def parse(self, file_bytes: bytes) -> str:
+    async def parse(self, file_bytes: bytes, subject: str = "") -> str:
         file_stream = io.BytesIO(file_bytes)
 
         document = docx.Document(file_stream)
 
-        full_text = self._extract_document_text(file_bytes, document)
-
-        image_tasks = []
+        image_tasks: dict[str, asyncio.Task[str]] = {}
 
         for rel in document.part.rels.values():
             if "image" in rel.target_ref:
                 image_bytes = rel.target_part.blob
+                content_type = getattr(rel.target_part, "content_type", "")
+                filename = getattr(rel.target_part, "partname", "")
 
-                image_tasks.append(
-                    self._extract_image_text_safe(image_bytes)
+                image_tasks[rel.rId] = asyncio.create_task(
+                    self._extract_image_text_safe(
+                        image_bytes,
+                        subject=subject,
+                        content_type=content_type,
+                        filename=str(filename),
+                    )
                 )
 
+        image_text_by_rid = {}
         if image_tasks:
-            image_results = await asyncio.gather(*image_tasks)
+            image_results = await asyncio.gather(*image_tasks.values())
+            image_text_by_rid = dict(zip(image_tasks.keys(), image_results))
 
-            for text in image_results:
-                if text:
-                    full_text.append(text)
+        full_text = self._extract_document_text(file_bytes, document, image_text_by_rid)
 
         return "\n".join(full_text)
 
-    def _extract_document_text(self, file_bytes: bytes, document: docx.Document) -> list[str]:
+    def _extract_document_text(
+        self,
+        file_bytes: bytes,
+        document: docx.Document,
+        image_text_by_rid: dict[str, str],
+    ) -> list[str]:
         try:
-            return self._extract_document_xml_text(file_bytes)
+            return self._extract_document_xml_text(file_bytes, image_text_by_rid)
         except Exception as error:
             print(f"DOCX XML text extraction error: {error}")
 
@@ -131,7 +143,7 @@ class DOCXParser:
                 if text
             ]
 
-    def _extract_document_xml_text(self, file_bytes: bytes) -> list[str]:
+    def _extract_document_xml_text(self, file_bytes: bytes, image_text_by_rid: dict[str, str]) -> list[str]:
         with zipfile.ZipFile(io.BytesIO(file_bytes)) as archive:
             document_xml = archive.read("word/document.xml")
 
@@ -147,17 +159,17 @@ class DOCXParser:
             local_name = _local_name(child.tag)
 
             if local_name == "p":
-                text = self._extract_paragraph_text(child)
+                text = self._extract_paragraph_text(child, image_text_by_rid)
 
                 if text:
                     parts.append(text)
 
             if local_name == "tbl":
-                parts.extend(self._extract_table_text(child))
+                parts.extend(self._extract_table_text(child, image_text_by_rid))
 
         return parts
 
-    def _extract_table_text(self, table: ElementTree.Element) -> list[str]:
+    def _extract_table_text(self, table: ElementTree.Element, image_text_by_rid: dict[str, str]) -> list[str]:
         rows = []
 
         for row in table.findall(".//w:tr", NS):
@@ -167,7 +179,7 @@ class DOCXParser:
                 paragraphs = []
 
                 for paragraph in cell.findall(".//w:p", NS):
-                    text = self._extract_paragraph_text(paragraph)
+                    text = self._extract_paragraph_text(paragraph, image_text_by_rid)
 
                     if text:
                         paragraphs.append(text)
@@ -180,15 +192,33 @@ class DOCXParser:
 
         return rows
 
-    def _extract_paragraph_text(self, paragraph: ElementTree.Element) -> str:
+    def _extract_paragraph_text(self, paragraph: ElementTree.Element, image_text_by_rid: dict[str, str]) -> str:
         chunks = []
-        self._walk_paragraph_node(paragraph, chunks)
+        self._walk_paragraph_node(paragraph, chunks, image_text_by_rid)
 
         return _clean_text("".join(chunks))
 
-    def _walk_paragraph_node(self, node: ElementTree.Element, chunks: list[str]) -> None:
+    def _walk_paragraph_node(
+        self,
+        node: ElementTree.Element,
+        chunks: list[str],
+        image_text_by_rid: dict[str, str],
+    ) -> None:
         namespace = _namespace(node.tag)
         local_name = _local_name(node.tag)
+
+        if local_name in {"blip", "imagedata"}:
+            rel_id = (
+                _attribute_value(node, "embed")
+                or _attribute_value(node, "link")
+                or _attribute_value(node, "id")
+            )
+            image_text = image_text_by_rid.get(rel_id, "").strip()
+
+            if image_text:
+                chunks.append(f" {image_text} ")
+
+            return
 
         if namespace == MATH_NS and local_name in {"oMath", "oMathPara"}:
             math_text = omml_to_latex(node)
@@ -211,7 +241,7 @@ class DOCXParser:
             return
 
         for child in node:
-            self._walk_paragraph_node(child, chunks)
+            self._walk_paragraph_node(child, chunks, image_text_by_rid)
 
     def _omml_to_text(self, node: ElementTree.Element) -> str:
         local_name = _local_name(node.tag)
@@ -299,14 +329,40 @@ class DOCXParser:
 
         return ""
 
-    async def _extract_image_text_safe(self, image_bytes: bytes) -> str:
+    async def _extract_image_text_safe(
+        self,
+        image_bytes: bytes,
+        subject: str = "",
+        content_type: str = "",
+        filename: str = "",
+    ) -> str:
         async with self.semaphore:
             try:
-                local_result = self.tesseract.extract_text(image_bytes)
+                if is_wmf_image(image_bytes, content_type=content_type, filename=filename):
+                    wmf_text = extract_wmf_text(image_bytes)
+                    if wmf_text:
+                        return wmf_text
+
+                image_bytes, image_type = prepare_image_for_ocr(
+                    image_bytes,
+                    content_type=content_type,
+                    filename=filename,
+                )
+                if not image_bytes or not image_type:
+                    return ""
+
+                local_result = self.tesseract.extract_text(image_bytes, subject=subject)
                 if local_result.accepted:
                     return local_result.text
 
-                return await self.gigachat.extract_text_from_image(image_bytes)
+                if is_math_heavy_subject(subject):
+                    return await self.gigachat.extract_text_from_image(
+                        image_bytes,
+                        image_type=image_type,
+                        system_prompt=MATH_EXTRACTION_PROMPT,
+                    )
+
+                return await self.gigachat.extract_text_from_image(image_bytes, image_type=image_type)
             except Exception as e:
                 print(f"DOCX image extraction error: {e}")
                 return ""

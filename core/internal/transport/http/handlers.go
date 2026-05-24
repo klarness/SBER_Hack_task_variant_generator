@@ -9,6 +9,7 @@ import (
 	"mime/multipart"
 	stdhttp "net/http"
 	"strconv"
+	"strings"
 
 	"core/internal/domain"
 	"core/internal/service"
@@ -198,6 +199,36 @@ func (h *Handlers) EditVariantItem(w stdhttp.ResponseWriter, r *stdhttp.Request)
 	writeJSON(w, stdhttp.StatusOK, item)
 }
 
+func (h *Handlers) EditTaskItem(w stdhttp.ResponseWriter, r *stdhttp.Request) {
+	userID, _ := userIDFromContext(r.Context())
+	taskID, err := parseUUIDParam(r, "id")
+	if err != nil {
+		writeError(w, stdhttp.StatusBadRequest, err)
+		return
+	}
+	itemID, err := parseUUIDParam(r, "item_id")
+	if err != nil {
+		writeError(w, stdhttp.StatusBadRequest, err)
+		return
+	}
+
+	var req struct {
+		Content string `json:"content"`
+		Context string `json:"context"`
+	}
+	if err = json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, stdhttp.StatusBadRequest, errors.New("invalid JSON body"))
+		return
+	}
+
+	item, err := h.taskService.EditTaskItem(r.Context(), userID, taskID, itemID, req.Content, req.Context)
+	if err != nil {
+		writeDomainError(w, err)
+		return
+	}
+	writeJSON(w, stdhttp.StatusOK, item)
+}
+
 func (h *Handlers) RegenerateVariantItem(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 	userID, _ := userIDFromContext(r.Context())
 	variantID, err := parseUUIDParam(r, "id")
@@ -211,7 +242,23 @@ func (h *Handlers) RegenerateVariantItem(w stdhttp.ResponseWriter, r *stdhttp.Re
 		return
 	}
 
-	item, err := h.taskService.RegenerateVariantItem(r.Context(), userID, variantID, itemID)
+	var req struct {
+		Prompt       string `json:"prompt"`
+		CustomPrompt string `json:"custom_prompt"`
+	}
+	if r.Body != nil {
+		if err = json.NewDecoder(r.Body).Decode(&req); err != nil && !errors.Is(err, io.EOF) {
+			writeError(w, stdhttp.StatusBadRequest, errors.New("invalid JSON body"))
+			return
+		}
+	}
+
+	customPrompt := req.CustomPrompt
+	if customPrompt == "" {
+		customPrompt = req.Prompt
+	}
+
+	item, err := h.taskService.RegenerateVariantItem(r.Context(), userID, variantID, itemID, customPrompt)
 	if err != nil {
 		writeDomainError(w, err)
 		return
@@ -227,7 +274,13 @@ func (h *Handlers) ExportTask(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 		return
 	}
 
-	result, err := h.taskService.ExportTask(r.Context(), userID, taskID)
+	variantNumbers, err := parseVariantNumbers(r.URL.Query().Get("variants"))
+	if err != nil {
+		writeError(w, stdhttp.StatusBadRequest, err)
+		return
+	}
+
+	result, err := h.taskService.ExportTask(r.Context(), userID, taskID, variantNumbers, r.URL.Query().Get("format"))
 	if err != nil {
 		writeDomainError(w, err)
 		return
@@ -241,6 +294,33 @@ func (h *Handlers) ExportTask(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 	}
 	w.WriteHeader(stdhttp.StatusOK)
 	_, _ = w.Write(result.Data)
+}
+
+func parseVariantNumbers(raw string) ([]int, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, nil
+	}
+
+	parts := strings.Split(raw, ",")
+	numbers := make([]int, 0, len(parts))
+	seen := make(map[int]struct{}, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			return nil, errors.New("variants must contain comma-separated positive integers")
+		}
+		number, err := strconv.Atoi(part)
+		if err != nil || number <= 0 {
+			return nil, errors.New("variants must contain comma-separated positive integers")
+		}
+		if _, ok := seen[number]; ok {
+			continue
+		}
+		seen[number] = struct{}{}
+		numbers = append(numbers, number)
+	}
+	return numbers, nil
 }
 
 func readUploadedFiles(form *multipart.Form) ([]domain.UploadedFile, error) {

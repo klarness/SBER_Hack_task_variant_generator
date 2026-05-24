@@ -57,13 +57,14 @@ func (c *LimitedClient) Validate(ctx context.Context, req domain.ValidateRequest
 	return c.next.Validate(ctx, req)
 }
 
-func (c *LimitedClient) Export(ctx context.Context, task *domain.Task) (*domain.ExportResult, error) {
+func (c *LimitedClient) Export(ctx context.Context, task *domain.Task, format string) (*domain.ExportResult, error) {
 	c.logger.InfoContext(ctx, "ai worker export bypasses llm permit",
 		"operation", "export",
 		"concurrency", c.concurrency,
 		"in_flight", len(c.permits),
+		"format", format,
 	)
-	return c.next.Export(ctx, task)
+	return c.next.Export(ctx, task, format)
 }
 
 func (c *LimitedClient) acquire(ctx context.Context, operation string) (func(), error) {

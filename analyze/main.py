@@ -20,6 +20,7 @@ from analyze.services.export.docx_exporter import (
     build_task_docx,
     content_disposition,
 )
+from analyze.services.export.pdf_exporter import PDF_CONTENT_TYPE, build_task_pdf
 from analyze.services.llm.client import GigaChatClient
 from analyze.services.parsing.math_markup import normalize_math_markup
 from analyze.services.parsing.extraction import FileExtractionService
@@ -73,7 +74,7 @@ async def analyze(
 
     for file in files or []:
         try:
-            raw_text = await extraction_service.parse(file)
+            raw_text = await extraction_service.parse(file, subject=subject)
         except HTTPException:
             raise
         except Exception as exc:
@@ -134,15 +135,24 @@ async def validate(request: ValidateRequest):
 
 
 @app.post("/export")
-async def export(task: dict[str, Any] = Body(...)):
+async def export(task: dict[str, Any] = Body(...), format: str = "docx"):
+    export_format = (format or "docx").lower().strip()
+    if export_format not in {"docx", "pdf"}:
+        raise HTTPException(status_code=400, detail="Unsupported export format. Use docx or pdf.")
+
     try:
-        data, filename, ascii_filename = build_task_docx(task)
+        if export_format == "pdf":
+            data, filename, ascii_filename = build_task_pdf(task)
+            content_type = PDF_CONTENT_TYPE
+        else:
+            data, filename, ascii_filename = build_task_docx(task)
+            content_type = DOCX_CONTENT_TYPE
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"DOCX export failed: {exc}") from exc
+        raise HTTPException(status_code=500, detail=f"{export_format.upper()} export failed: {exc}") from exc
 
     return Response(
         content=data,
-        media_type=DOCX_CONTENT_TYPE,
+        media_type=content_type,
         headers={
             "X-Filename": ascii_filename,
             "Content-Disposition": content_disposition(filename, ascii_filename),

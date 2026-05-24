@@ -123,6 +123,7 @@ type GenerateRequest struct {
 	SourceContent    string          `json:"source_content"`
 	Settings         json.RawMessage `json:"settings,omitempty"`
 	PreviousVariants []string        `json:"previous_variants,omitempty"`
+	CustomPrompt     string          `json:"custom_prompt,omitempty"`
 }
 
 type ValidateRequest struct {

@@ -14,3 +14,5 @@ json-repair
 python-pptx
 latex2mathml
 mathml2omml
+reportlab
+matplotlib

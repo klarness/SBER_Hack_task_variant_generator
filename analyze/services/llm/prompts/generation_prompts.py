@@ -9,6 +9,16 @@ def build_generate_prompt(
     strategy: str,
     subject_profile: str,
 ) -> tuple[str, str]:
+    custom_prompt = str(request.get("custom_prompt") or "").strip()
+    if custom_prompt:
+        custom_prompt_block = (
+            "ДОПОЛНИТЕЛЬНАЯ ИНСТРУКЦИЯ УЧИТЕЛЯ:\n"
+            f"{custom_prompt}\n"
+            "Выполни ее, если она не противоречит сохранению типа задания, структуры, темы и сложности."
+        )
+    else:
+        custom_prompt_block = "ДОПОЛНИТЕЛЬНАЯ ИНСТРУКЦИЯ УЧИТЕЛЯ:\nнет"
+
     system = (
         "Ты строгий школьный методист. Твоя задача - создать новый вариант школьного задания, "
         "который сохраняет тип, структуру, тему и сложность оригинала.\n\n"
@@ -76,6 +86,8 @@ def build_generate_prompt(
 
 УЖЕ СОЗДАННЫЕ ВАРИАНТЫ ДЛЯ ЭТОГО ЖЕ ЗАДАНИЯ:
 {previous_variants_text}
+
+{custom_prompt_block}
 
 Верни строго JSON с единственным ключом "content".
 """.strip()

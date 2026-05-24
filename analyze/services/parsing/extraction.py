@@ -20,7 +20,7 @@ class FileExtractionService:
         self.txt_parser = TXTParser()
         self.image_parser = ImageParser()
 
-    async def parse(self, file: UploadFile) -> str:
+    async def parse(self, file: UploadFile, subject: str = "") -> str:
         # Read a small head to detect type without loading whole file into memory
         head = await file.read(8192)
 
@@ -31,16 +31,16 @@ class FileExtractionService:
         content = head + rest
 
         if file_type == "pdf":
-            return await self.pdf_parser.parse(content)
+            return await self.pdf_parser.parse(content, subject=subject)
 
         if file_type == "docx":
-            return await self.docx_parser.parse(content)
+            return await self.docx_parser.parse(content, subject=subject)
 
         if file_type == "pptx":
-            return await self.pptx_parser.parse(content)
+            return await self.pptx_parser.parse(content, subject=subject)
 
         if file_type in {"png", "jpeg"}:
-            return await self.image_parser.parse(content, image_type=file_type)
+            return await self.image_parser.parse(content, image_type=file_type, subject=subject)
 
         if file_type == "text":
             return await self.txt_parser.parse(content)

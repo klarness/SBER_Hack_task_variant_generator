@@ -32,6 +32,7 @@ class GenerateRequest(BaseModel):
     source_content: str
     settings: dict | None = None
     previous_variants: list[str] = Field(default_factory=list)
+    custom_prompt: str = ""
 
 
 class GenerateResponse(BaseModel):

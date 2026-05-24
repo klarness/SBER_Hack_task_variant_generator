@@ -1,5 +1,5 @@
 import { apiFetch, apiJson } from "./client";
-import type { ExportResult, Task, TaskSettings } from "@/shared/types/domain";
+import type { ExportResult, Task, TaskItem, TaskSettings } from "@/shared/types/domain";
 
 export interface CreateTaskInput {
   title: string;
@@ -30,6 +30,17 @@ export async function getTask(id: string): Promise<Task> {
   return apiJson<Task>(`/api/v1/tasks/${id}`);
 }
 
+export async function editTaskItem(
+  taskId: string,
+  itemId: string,
+  input: { content: string; context?: string }
+): Promise<TaskItem> {
+  return apiJson<TaskItem>(`/api/v1/tasks/${taskId}/items/${itemId}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
 export interface ListTasksParams {
   query?: string;
   subject?: string;
@@ -52,12 +63,22 @@ export async function listTasks(
   return apiJson(`/api/v1/tasks?${search.toString()}`);
 }
 
-export async function exportTask(id: string): Promise<ExportResult> {
-  const res = await apiFetch(`/api/v1/tasks/${id}/export`);
+export async function exportTask(
+  id: string,
+  variantNumbers: number[] = [],
+  format: "docx" | "pdf" = "docx"
+): Promise<ExportResult> {
+  const search = new URLSearchParams();
+  search.set("format", format);
+  if (variantNumbers.length > 0) {
+    search.set("variants", variantNumbers.join(","));
+  }
+  const suffix = search.toString() ? `?${search.toString()}` : "";
+  const res = await apiFetch(`/api/v1/tasks/${id}/export${suffix}`);
   const blob = await res.blob();
 
   const disposition = res.headers.get("Content-Disposition") || "";
-  const filename = filenameFromDisposition(disposition) || `export-${id}.docx`;
+  const filename = filenameFromDisposition(disposition) || `export-${id}.${format}`;
   return { filename, blob };
 }
 

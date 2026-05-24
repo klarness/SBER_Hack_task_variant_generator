@@ -123,12 +123,52 @@ func (s *TaskService) EditVariantItem(ctx context.Context, userID, variantID, it
 	return variantItem, nil
 }
 
-func (s *TaskService) RegenerateVariantItem(ctx context.Context, userID, variantID, itemID uuid.UUID) (*domain.VariantItem, error) {
+func (s *TaskService) EditTaskItem(ctx context.Context, userID, taskID, itemID uuid.UUID, content, contextText string) (*domain.TaskItem, error) {
+	s.logger.InfoContext(ctx, "task item manual edit requested",
+		"user_id", userID.String(),
+		"task_id", taskID.String(),
+		"task_item_id", itemID.String(),
+		"content_bytes", len(content),
+		"context_bytes", len(contextText),
+	)
+	content = strings.TrimSpace(content)
+	contextText = strings.TrimSpace(contextText)
+	if content == "" {
+		s.logger.WarnContext(ctx, "task item manual edit rejected: empty content",
+			"user_id", userID.String(),
+			"task_id", taskID.String(),
+			"task_item_id", itemID.String(),
+		)
+		return nil, domain.ErrInvalidInput
+	}
+
+	item, err := s.repo.UpdateTaskItem(ctx, userID, taskID, itemID, content, contextText)
+	if err != nil {
+		s.logger.ErrorContext(ctx, "task item manual edit save failed",
+			"user_id", userID.String(),
+			"task_id", taskID.String(),
+			"task_item_id", itemID.String(),
+			"error", err,
+		)
+		return nil, err
+	}
+
+	s.logger.InfoContext(ctx, "task item manual edit completed",
+		"user_id", userID.String(),
+		"task_id", taskID.String(),
+		"task_item_id", itemID.String(),
+	)
+	return item, nil
+}
+
+func (s *TaskService) RegenerateVariantItem(ctx context.Context, userID, variantID, itemID uuid.UUID, customPrompt string) (*domain.VariantItem, error) {
 	s.logger.InfoContext(ctx, "variant item regeneration requested",
 		"user_id", userID.String(),
 		"variant_id", variantID.String(),
 		"variant_item_id", itemID.String(),
+		"custom_prompt_bytes", len(customPrompt),
 	)
+	customPrompt = strings.TrimSpace(customPrompt)
 	task, taskItem, variantItem, err := s.repo.GetVariantItemForRegeneration(ctx, userID, variantID, itemID)
 	if err != nil {
 		s.logger.ErrorContext(ctx, "variant item regeneration lookup failed",
@@ -172,12 +212,14 @@ func (s *TaskService) RegenerateVariantItem(ctx context.Context, userID, variant
 				UserID:           userID,
 				TaskID:           task.ID,
 				TaskItemID:       taskItem.ID,
+				Subject:          task.Subject,
 				VariantNumber:    variantNumber,
 				Order:            taskItem.Order,
 				Context:          taskItem.Context,
 				SourceContent:    taskItem.Content,
 				Settings:         task.Settings,
 				PreviousVariants: previousVariants,
+				CustomPrompt:     customPrompt,
 			})
 			if err != nil {
 				return err
@@ -187,6 +229,7 @@ func (s *TaskService) RegenerateVariantItem(ctx context.Context, userID, variant
 				UserID:           userID,
 				TaskID:           task.ID,
 				TaskItemID:       taskItem.ID,
+				Subject:          task.Subject,
 				VariantNumber:    variantNumber,
 				Original:         taskItem.Content,
 				Generated:        item.Content,
@@ -276,10 +319,16 @@ func variantContextForItem(task *domain.Task, taskItemID, currentItemID uuid.UUI
 	return variantNumber, previousVariants
 }
 
-func (s *TaskService) ExportTask(ctx context.Context, userID, taskID uuid.UUID) (*domain.ExportResult, error) {
+func (s *TaskService) ExportTask(ctx context.Context, userID, taskID uuid.UUID, variantNumbers []int, format string) (*domain.ExportResult, error) {
+	format = normalizeExportFormat(format)
+	if format == "" {
+		return nil, domain.ErrInvalidInput
+	}
 	s.logger.InfoContext(ctx, "task export requested",
 		"user_id", userID.String(),
 		"task_id", taskID.String(),
+		"selected_variants_count", len(variantNumbers),
+		"format", format,
 	)
 	task, err := s.repo.GetTaskWithDetails(ctx, userID, taskID)
 	if err != nil {
@@ -290,7 +339,8 @@ func (s *TaskService) ExportTask(ctx context.Context, userID, taskID uuid.UUID) 
 		)
 		return nil, err
 	}
-	result, err := s.ai.Export(ctx, task)
+	filterTaskVariants(task, variantNumbers)
+	result, err := s.ai.Export(ctx, task, format)
 	if err != nil {
 		s.logger.ErrorContext(ctx, "task export failed",
 			"user_id", userID.String(),
@@ -306,4 +356,34 @@ func (s *TaskService) ExportTask(ctx context.Context, userID, taskID uuid.UUID) 
 		"bytes", len(result.Data),
 	)
 	return result, nil
+}
+
+func normalizeExportFormat(format string) string {
+	format = strings.ToLower(strings.TrimSpace(format))
+	if format == "" {
+		return "docx"
+	}
+	if format == "docx" || format == "pdf" {
+		return format
+	}
+	return ""
+}
+
+func filterTaskVariants(task *domain.Task, variantNumbers []int) {
+	if task == nil || len(variantNumbers) == 0 {
+		return
+	}
+
+	allowed := make(map[int]struct{}, len(variantNumbers))
+	for _, number := range variantNumbers {
+		allowed[number] = struct{}{}
+	}
+
+	filtered := make([]domain.Variant, 0, len(task.Variants))
+	for _, variant := range task.Variants {
+		if _, ok := allowed[variant.VariantNumber]; ok {
+			filtered = append(filtered, variant)
+		}
+	}
+	task.Variants = filtered
 }

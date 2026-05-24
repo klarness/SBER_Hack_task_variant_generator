@@ -26,6 +26,11 @@ import {
   X,
 } from "lucide-react";
 import { cn } from "@/shared/lib/cn";
+import {
+  MathFormula,
+  prepareFormulaContent,
+  serializeFormulaContent,
+} from "@/features/editor/MathFormula";
 import { LatexText } from "@/shared/ui/LatexText";
 
 interface Props {
@@ -65,9 +70,10 @@ export function RichEditor({
       TableRow,
       TableHeader,
       TableCell,
+      MathFormula,
       Placeholder.configure({ placeholder }),
     ],
-    content: value,
+    content: prepareFormulaContent(value),
     editorProps: {
       attributes: {
         class: cn(
@@ -77,7 +83,7 @@ export function RichEditor({
       },
     },
     onUpdate({ editor }) {
-      onChange?.(editor.getHTML());
+      onChange?.(serializeFormulaContent(editor.getHTML()));
     },
   });
 
@@ -85,13 +91,13 @@ export function RichEditor({
     if (!editor || lastExternalValue.current === value) return;
     lastExternalValue.current = value;
     if (!editor.isFocused) {
-      editor.commands.setContent(value, { emitUpdate: false });
+      editor.commands.setContent(prepareFormulaContent(value), { emitUpdate: false });
     }
   }, [editor, value]);
 
   if (!editor) return null;
 
-  const currentHtml = editor.getHTML();
+  const currentHtml = serializeFormulaContent(editor.getHTML());
   const inTable = editor.isActive("table");
 
   const insertFormula = () => {
@@ -104,17 +110,21 @@ export function RichEditor({
     if (!raw?.trim()) return;
 
     const formula = raw.trim().replace(/^\$|\$$/g, "");
-    editor.chain().focus().insertContent(`$${formula}$`).run();
+    editor
+      .chain()
+      .focus()
+      .insertContent({ type: "mathFormula", attrs: { latex: formula } })
+      .run();
   };
 
   const commit = () => {
-    onCommit?.(editor.getHTML());
+    onCommit?.(serializeFormulaContent(editor.getHTML()));
   };
 
   return (
     <div
       className={cn(
-        "rounded-xl border border-border bg-white overflow-hidden shadow-card",
+        "rounded-xl border border-border bg-white overflow-visible shadow-card",
         className
       )}
     >

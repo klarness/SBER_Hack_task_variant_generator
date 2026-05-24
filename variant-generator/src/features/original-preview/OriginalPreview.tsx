@@ -1,4 +1,12 @@
-import type { Task } from "@/shared/types/domain";
+import { useEffect, useState } from "react";
+import { useMutation, useQueryClient, type QueryClient } from "@tanstack/react-query";
+import { Loader2, Pencil, RotateCw, X } from "lucide-react";
+import { RichEditor } from "@/features/editor/RichEditor";
+import { RegeneratePromptDialog } from "@/features/regeneration/RegeneratePromptDialog";
+import { editTaskItem } from "@/shared/api/tasks";
+import { regenerateVariantItem } from "@/shared/api/variants";
+import { cn } from "@/shared/lib/cn";
+import type { Task, TaskItem, VariantItem } from "@/shared/types/domain";
 import { LatexText } from "@/shared/ui/LatexText";
 
 interface Props {
@@ -37,28 +45,219 @@ export function OriginalPreview({ task }: Props) {
         ) : (
           <article className="glass-card px-4 py-2">
             {items.map((it) => (
-              <div
-                key={it.id}
-                className="py-3.5 px-3 -mx-1 border-b border-white/40 last:border-b-0 rounded-xl ring-1 ring-transparent hover:ring-accent/15 hover:bg-white/30 transition"
-              >
-                <div className="font-mono text-[13.5px] font-bold text-accent tracking-[0.04em] mb-2">
-                  Задание {it.order}
-                </div>
-                <LatexText
-                  text={it.content}
-                  className="text-[14.5px] text-ink-900 leading-relaxed"
-                />
-                {it.context && (
-                  <LatexText
-                    text={it.context}
-                    className="mt-2 text-xs text-ink-500 italic"
-                  />
-                )}
-              </div>
+              <OriginalTaskItem key={it.id} task={task} item={it} />
             ))}
           </article>
         )}
       </div>
     </>
   );
+}
+
+function OriginalTaskItem({ task, item }: { task: Task; item: TaskItem }) {
+  const qc = useQueryClient();
+  const [localContent, setLocalContent] = useState(item.content);
+  const [localContext, setLocalContext] = useState(item.context ?? "");
+  const [draftContent, setDraftContent] = useState(item.content);
+  const [draftContext, setDraftContext] = useState(item.context ?? "");
+  const [isEditing, setIsEditing] = useState(false);
+  const [isPromptOpen, setIsPromptOpen] = useState(false);
+
+  useEffect(() => {
+    setLocalContent(item.content);
+    setLocalContext(item.context ?? "");
+    setDraftContent(item.content);
+    setDraftContext(item.context ?? "");
+  }, [item.content, item.context]);
+
+  const editMutation = useMutation({
+    mutationFn: (input: { content: string; context?: string }) =>
+      editTaskItem(task.id, item.id, input),
+    onSuccess: (updated) => {
+      setLocalContent(updated.content);
+      setLocalContext(updated.context ?? "");
+      setDraftContent(updated.content);
+      setDraftContext(updated.context ?? "");
+      patchTaskItemInCache(qc, task.id, updated);
+    },
+  });
+
+  const regenMutation = useMutation({
+    mutationFn: async (prompt?: string) => {
+      const targets = relatedVariantItems(task, item.id);
+      const updated: VariantItem[] = [];
+      for (const target of targets) {
+        updated.push(
+          await regenerateVariantItem(target.variantId, target.itemId, prompt)
+        );
+      }
+      return updated;
+    },
+    onSuccess: (updatedItems) => {
+      patchVariantItemsInCache(qc, task.id, updatedItems);
+      setIsPromptOpen(false);
+    },
+  });
+
+  const save = async () => {
+    const updated = await editMutation.mutateAsync({
+      content: draftContent,
+      context: draftContext,
+    });
+    setIsEditing(false);
+    return updated;
+  };
+
+  const handleOpenRegenerationPrompt = async () => {
+    try {
+      if (isEditing) {
+        await save();
+      }
+      setIsPromptOpen(true);
+    } catch {
+      // Error state is rendered below.
+    }
+  };
+
+  const hasGeneratedItems = relatedVariantItems(task, item.id).length > 0;
+
+  return (
+    <div className="py-3.5 px-3 -mx-1 border-b border-white/40 last:border-b-0 rounded-xl ring-1 ring-transparent hover:ring-accent/15 hover:bg-white/30 transition">
+      <div className="flex items-center justify-between gap-3 mb-2">
+        <div className="font-mono text-[13.5px] font-bold text-accent tracking-[0.04em]">
+          Задание {item.order}
+        </div>
+        <div className="shrink-0 flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => {
+              setDraftContent(localContent);
+              setDraftContext(localContext);
+              setIsEditing((value) => !value);
+            }}
+            title={isEditing ? "Закрыть редактор" : "Редактировать исходное задание"}
+            className={cn(
+              "w-8 h-8 inline-flex items-center justify-center rounded-lg",
+              "border border-border bg-white/60 backdrop-blur-sm",
+              "text-ink-600 hover:bg-surface-subtle hover:text-ink-900 transition"
+            )}
+          >
+            {isEditing ? <X size={14} /> : <Pencil size={14} />}
+          </button>
+          <button
+            type="button"
+            onClick={handleOpenRegenerationPrompt}
+            disabled={!hasGeneratedItems || editMutation.isPending || regenMutation.isPending}
+            title="Перегенерировать связанные варианты"
+            className={cn(
+              "w-8 h-8 inline-flex items-center justify-center rounded-lg",
+              "border border-border bg-white/60 backdrop-blur-sm",
+              "text-accent hover:bg-accent hover:text-white hover:border-accent transition",
+              "disabled:opacity-50 disabled:cursor-not-allowed"
+            )}
+          >
+            {regenMutation.isPending ? (
+              <Loader2 size={14} className="animate-spin" />
+            ) : (
+              <RotateCw size={14} />
+            )}
+          </button>
+        </div>
+      </div>
+
+      {isEditing ? (
+        <div className="space-y-3">
+          <RichEditor
+            value={draftContent}
+            onChange={setDraftContent}
+            onCommit={() => void save()}
+            onCancel={() => {
+              setDraftContent(localContent);
+              setDraftContext(localContext);
+              setIsEditing(false);
+            }}
+            compact
+          />
+          <textarea
+            value={draftContext}
+            onChange={(event) => setDraftContext(event.target.value)}
+            placeholder="Общий контекст для этого задания, если нужен"
+            className="w-full min-h-20 rounded-xl border border-border bg-white/80 px-3 py-2 text-sm text-ink-900 outline-none focus:border-accent"
+          />
+        </div>
+      ) : (
+        <>
+          <LatexText
+            text={localContent}
+            className="text-[14.5px] text-ink-900 leading-relaxed"
+          />
+          {localContext && (
+            <LatexText
+              text={localContext}
+              className="mt-2 text-xs text-ink-500 italic"
+            />
+          )}
+        </>
+      )}
+
+      {editMutation.isError && (
+        <p className="mt-2 text-xs text-danger">
+          Не удалось сохранить исходное задание. Проверьте текст и попробуйте еще раз.
+        </p>
+      )}
+      {regenMutation.isError && (
+        <p className="mt-2 text-xs text-danger">
+          Не удалось перегенерировать связанные варианты.
+        </p>
+      )}
+
+      <RegeneratePromptDialog
+        open={isPromptOpen}
+        title={`Перегенерировать варианты задания ${item.order}`}
+        description="Можно уточнить, что изменить во всех вариантах этого исходного пункта. Если исходник открыт в редакторе, он сначала сохраняется."
+        loading={regenMutation.isPending}
+        onCancel={() => setIsPromptOpen(false)}
+        onSubmit={(prompt) => regenMutation.mutate(prompt)}
+      />
+    </div>
+  );
+}
+
+function relatedVariantItems(task: Task, taskItemId: string) {
+  return (task.variants ?? []).flatMap((variant) =>
+    (variant.items ?? [])
+      .filter((item) => item.task_item_id === taskItemId)
+      .map((item) => ({ variantId: variant.id, itemId: item.id }))
+  );
+}
+
+function patchTaskItemInCache(qc: QueryClient, taskId: string, updated: TaskItem) {
+  qc.setQueryData<Task>(["task", taskId], (prev) => {
+    if (!prev?.task_items) return prev;
+    return {
+      ...prev,
+      task_items: prev.task_items.map((item) =>
+        item.id === updated.id ? updated : item
+      ),
+    };
+  });
+}
+
+function patchVariantItemsInCache(
+  qc: QueryClient,
+  taskId: string,
+  updatedItems: VariantItem[]
+) {
+  if (updatedItems.length === 0) return;
+  const byId = new Map(updatedItems.map((item) => [item.id, item]));
+  qc.setQueryData<Task>(["task", taskId], (prev) => {
+    if (!prev?.variants) return prev;
+    return {
+      ...prev,
+      variants: prev.variants.map((variant) => ({
+        ...variant,
+        items: variant.items?.map((item) => byId.get(item.id) ?? item),
+      })),
+    };
+  });
 }

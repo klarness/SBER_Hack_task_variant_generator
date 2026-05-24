@@ -142,7 +142,7 @@ func (c fakeAIClient) Validate(context.Context, domain.ValidateRequest) (bool, e
 	return true, nil
 }
 
-func (c fakeAIClient) Export(context.Context, *domain.Task) (*domain.ExportResult, error) {
+func (c fakeAIClient) Export(context.Context, *domain.Task, string) (*domain.ExportResult, error) {
 	return nil, errors.New("not implemented")
 }
 
@@ -175,7 +175,7 @@ func (c *recordingAIClient) Validate(_ context.Context, req domain.ValidateReque
 	return true, nil
 }
 
-func (c *recordingAIClient) Export(context.Context, *domain.Task) (*domain.ExportResult, error) {
+func (c *recordingAIClient) Export(context.Context, *domain.Task, string) (*domain.ExportResult, error) {
 	return nil, errors.New("not implemented")
 }
 

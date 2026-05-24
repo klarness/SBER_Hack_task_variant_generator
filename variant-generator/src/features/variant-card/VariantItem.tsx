@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { AlertCircle, Loader2, Pencil, RotateCw } from "lucide-react";
 import { useState } from "react";
 import { RichEditor } from "@/features/editor/RichEditor";
+import { RegeneratePromptDialog } from "@/features/regeneration/RegeneratePromptDialog";
 import {
   editVariantItem,
   regenerateVariantItem,
@@ -26,6 +27,7 @@ export function VariantItem({
   const [localContent, setLocalContent] = useState(item.content);
   const [isEditing, setIsEditing] = useState(false);
   const [draftContent, setDraftContent] = useState(item.content);
+  const [isPromptOpen, setIsPromptOpen] = useState(false);
   const isFailed = item.status === "failed";
 
   const editMutation = useMutation({
@@ -35,11 +37,13 @@ export function VariantItem({
       setLocalContent(updated.content);
       setDraftContent(updated.content);
       patchInCache(qc, taskId, item.id, updated);
+      setIsPromptOpen(false);
     },
   });
 
   const regenMutation = useMutation({
-    mutationFn: () => regenerateVariantItem(item.variant_id, item.id),
+    mutationFn: (prompt?: string) =>
+      regenerateVariantItem(item.variant_id, item.id, prompt),
     onSuccess: (updated) => {
       setLocalContent(updated.content);
       setDraftContent(updated.content);
@@ -90,7 +94,7 @@ export function VariantItem({
           )}
           <button
             type="button"
-            onClick={() => regenMutation.mutate()}
+            onClick={() => setIsPromptOpen(true)}
             disabled={regenMutation.isPending}
             title="Перегенерировать"
             className={cn(
@@ -155,6 +159,15 @@ export function VariantItem({
           Не удалось перегенерировать. Можете написать задание вручную.
         </p>
       )}
+
+      <RegeneratePromptDialog
+        open={isPromptOpen}
+        title={`Перегенерировать задание ${questionOrder}`}
+        description="Опишите, что именно нужно изменить в этом пункте. Инструкция будет передана в генерацию."
+        loading={regenMutation.isPending}
+        onCancel={() => setIsPromptOpen(false)}
+        onSubmit={(prompt) => regenMutation.mutate(prompt)}
+      />
     </div>
   );
 }

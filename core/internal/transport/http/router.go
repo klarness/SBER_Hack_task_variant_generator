@@ -40,6 +40,7 @@ func NewRouter(handlers *Handlers, limiter domain.RateLimiter, logger *slog.Logg
 		r.Post("/tasks", handlers.CreateTask)
 		r.Get("/tasks/{id}", handlers.GetTask)
 		r.Get("/tasks/{id}/export", handlers.ExportTask)
+		r.Patch("/tasks/{id}/items/{item_id}", handlers.EditTaskItem)
 		r.Patch("/variants/{id}/items/{item_id}", handlers.EditVariantItem)
 		r.Post("/variants/{id}/items/{item_id}/regenerate", handlers.RegenerateVariantItem)
 	})

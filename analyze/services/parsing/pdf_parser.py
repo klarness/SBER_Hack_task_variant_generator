@@ -10,7 +10,8 @@ import pdfplumber
 
 from analyze.services.llm.client import GigaChatClient
 from analyze.services.llm.prompts.extraction_prompt import MATH_EXTRACTION_PROMPT
-from analyze.services.parsing.tesseract_ocr import TesseractOCR
+from analyze.services.parsing.image_conversion import extract_wmf_text, is_wmf_image, prepare_image_for_ocr
+from analyze.services.parsing.tesseract_ocr import TesseractOCR, is_math_heavy_subject
 
 
 PDF_LINE_Y_TOLERANCE = 11.0
@@ -106,7 +107,7 @@ class PDFParser:
         self.tesseract = TesseractOCR()
         self.semaphore = asyncio.Semaphore(3)
 
-    async def parse(self, file_bytes: bytes) -> str:
+    async def parse(self, file_bytes: bytes, subject: str = "") -> str:
         doc = fitz.open(stream=file_bytes, filetype="pdf")
 
         if PDF_MATH_OCR_ENABLED:
@@ -121,7 +122,7 @@ class PDFParser:
         if extracted_text:
             full_text.append(extracted_text)
         elif PDF_TESSERACT_OCR_ENABLED:
-            ocr_text = await self._extract_pages_with_tesseract_ocr(doc)
+            ocr_text = await self._extract_pages_with_tesseract_ocr(doc, subject=subject)
             if ocr_text:
                 return ocr_text
 
@@ -140,9 +141,14 @@ class PDFParser:
 
                 base_image = doc.extract_image(xref)
                 image_bytes = base_image["image"]
+                image_ext = base_image.get("ext", "")
 
                 image_tasks.append(
-                    self._extract_image_text_safe(image_bytes)
+                    self._extract_image_text_safe(
+                        image_bytes,
+                        subject=subject,
+                        filename=f"image.{image_ext}" if image_ext else "",
+                    )
                 )
 
         if image_tasks:
@@ -165,9 +171,9 @@ class PDFParser:
         page_results = await asyncio.gather(*page_tasks)
         return "\n\n".join(text for text in page_results if text)
 
-    async def _extract_pages_with_tesseract_ocr(self, doc: fitz.Document) -> str:
+    async def _extract_pages_with_tesseract_ocr(self, doc: fitz.Document, subject: str = "") -> str:
         page_tasks = [
-            self._extract_page_with_tesseract_ocr_safe(page)
+            self._extract_page_with_tesseract_ocr_safe(page, subject=subject)
             for page in doc
         ]
         if not page_tasks:
@@ -176,11 +182,11 @@ class PDFParser:
         page_results = await asyncio.gather(*page_tasks)
         return "\n\n".join(text for text in page_results if text)
 
-    async def _extract_page_with_tesseract_ocr_safe(self, page: fitz.Page) -> str:
+    async def _extract_page_with_tesseract_ocr_safe(self, page: fitz.Page, subject: str = "") -> str:
         async with self.semaphore:
             try:
                 image_bytes = self._render_page_to_png(page)
-                result = self.tesseract.extract_text(image_bytes)
+                result = self.tesseract.extract_text(image_bytes, subject=subject)
                 return result.text if result.accepted else ""
             except Exception as error:
                 print(f"PDF page Tesseract OCR error on page {page.number + 1}: {error}")
@@ -336,14 +342,40 @@ class PDFParser:
 
         return word["y0"] < baseline_y0 - 3.0
 
-    async def _extract_image_text_safe(self, image_bytes: bytes) -> str:
+    async def _extract_image_text_safe(
+        self,
+        image_bytes: bytes,
+        subject: str = "",
+        content_type: str = "",
+        filename: str = "",
+    ) -> str:
         async with self.semaphore:
             try:
-                local_result = self.tesseract.extract_text(image_bytes)
+                if is_wmf_image(image_bytes, content_type=content_type, filename=filename):
+                    wmf_text = extract_wmf_text(image_bytes)
+                    if wmf_text:
+                        return wmf_text
+
+                image_bytes, image_type = prepare_image_for_ocr(
+                    image_bytes,
+                    content_type=content_type,
+                    filename=filename,
+                )
+                if not image_bytes or not image_type:
+                    return ""
+
+                local_result = self.tesseract.extract_text(image_bytes, subject=subject)
                 if local_result.accepted:
                     return local_result.text
 
-                return await self.gigachat.extract_text_from_image(image_bytes)
+                if is_math_heavy_subject(subject):
+                    return await self.gigachat.extract_text_from_image(
+                        image_bytes,
+                        image_type=image_type,
+                        system_prompt=MATH_EXTRACTION_PROMPT,
+                    )
+
+                return await self.gigachat.extract_text_from_image(image_bytes, image_type=image_type)
             except Exception as e:
                 print(f"PDF image extraction error: {e}")
                 return ""

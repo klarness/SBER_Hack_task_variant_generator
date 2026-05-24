@@ -205,6 +205,146 @@ body {
   @apply text-ink-500 pointer-events-none float-left h-0;
 }
 
+.math-formula-node-wrap {
+  display: inline-block;
+  position: relative;
+  vertical-align: baseline;
+}
+.math-formula-node {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.65em;
+  padding: 1px 5px 2px;
+  margin: 0 1px;
+  border: 1px solid rgba(35, 160, 56, 0.24);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.86);
+  color: var(--ink-900);
+  cursor: pointer;
+  vertical-align: baseline;
+  transition: border-color 140ms ease, background 140ms ease, box-shadow 140ms ease;
+}
+.math-formula-node:hover,
+.math-formula-node.is-selected {
+  border-color: rgba(35, 160, 56, 0.55);
+  background: rgba(212, 239, 176, 0.4);
+  box-shadow: 0 0 0 2px rgba(35, 160, 56, 0.09);
+}
+.math-formula-node .katex {
+  font-size: 1em;
+  line-height: 1.2;
+}
+.math-formula-popover {
+  position: absolute;
+  z-index: 40;
+  left: 0;
+  top: calc(100% + 8px);
+  display: block;
+  width: min(360px, calc(100vw - 40px));
+  padding: 12px;
+  border: 1px solid rgba(31, 138, 45, 0.2);
+  border-radius: 12px;
+  background: white;
+  box-shadow: 0 22px 55px -30px rgba(21, 32, 14, 0.45);
+}
+.math-formula-popover-head,
+.math-formula-template-row,
+.math-formula-actions {
+  display: flex;
+  align-items: center;
+}
+.math-formula-popover-head {
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.math-formula-icon-button {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  color: var(--ink-700);
+}
+.math-formula-icon-button:hover {
+  background: rgba(212, 239, 176, 0.45);
+}
+.math-formula-preview {
+  display: flex;
+  align-items: center;
+  min-height: 42px;
+  margin-bottom: 8px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(252, 255, 232, 0.8);
+  overflow-x: auto;
+}
+.math-formula-field {
+  width: 100%;
+  min-height: 52px;
+  padding: 8px 10px;
+  border: 1px solid rgba(31, 138, 45, 0.22);
+  border-radius: 10px;
+  outline: none;
+  background: white;
+  font-size: 17px;
+}
+.math-formula-field::part(menu-toggle) {
+  display: none;
+}
+.math-formula-field:focus-within,
+.math-formula-field:focus {
+  border-color: rgba(35, 160, 56, 0.6);
+  box-shadow: 0 0 0 3px rgba(35, 160, 56, 0.1);
+}
+.math-formula-template-row {
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.math-formula-template-row button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 8px;
+  background: rgba(212, 239, 176, 0.35);
+  color: var(--ink-700);
+  font-size: 12px;
+  font-weight: 600;
+}
+.math-formula-template-row button:hover {
+  background: rgba(212, 239, 176, 0.65);
+}
+.math-formula-actions {
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 10px;
+}
+.math-formula-secondary,
+.math-formula-primary {
+  height: 30px;
+  padding: 0 10px;
+  border-radius: 9px;
+  font-size: 12px;
+  font-weight: 700;
+}
+.math-formula-secondary {
+  color: var(--ink-700);
+}
+.math-formula-secondary:hover {
+  background: rgba(212, 239, 176, 0.35);
+}
+.math-formula-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: var(--accent);
+  color: white;
+}
+
 .latex-text {
   overflow-wrap: anywhere;
 }

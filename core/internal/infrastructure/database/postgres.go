@@ -338,6 +338,43 @@ func (r *PostgresRepository) GetVariantItemForRegeneration(ctx context.Context, 
 	return task, taskItem, variantItem, nil
 }
 
+func (r *PostgresRepository) UpdateTaskItem(ctx context.Context, userID, taskID, itemID uuid.UUID, content, contextText string) (*domain.TaskItem, error) {
+	item := &domain.TaskItem{}
+	err := r.pool.QueryRow(ctx, `
+		UPDATE task_items ti
+		SET content = $1,
+			context = $2
+		FROM tasks t
+		WHERE ti.task_id = t.id
+			AND t.user_id = $3
+			AND ti.task_id = $4
+			AND ti.id = $5
+		RETURNING ti.id, ti.task_id, ti.item_order, ti.context, ti.content, ti.created_at
+	`, content, contextText, userID, taskID, itemID).Scan(
+		&item.ID,
+		&item.TaskID,
+		&item.Order,
+		&item.Context,
+		&item.Content,
+		&item.CreatedAt,
+	)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, domain.ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	_, err = r.pool.Exec(ctx, `
+		UPDATE tasks
+		SET updated_at = now()
+		WHERE id = $1 AND user_id = $2
+	`, taskID, userID)
+	if err != nil {
+		return nil, err
+	}
+	return item, nil
+}
+
 func (r *PostgresRepository) UpdateVariantItem(ctx context.Context, userID, variantID, itemID uuid.UUID, content string, isEdited bool) error {
 	tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {

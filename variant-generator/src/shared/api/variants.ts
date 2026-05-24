@@ -17,10 +17,15 @@ export async function editVariantItem(
 
 export async function regenerateVariantItem(
   variantId: string,
-  itemId: string
+  itemId: string,
+  prompt = ""
 ): Promise<VariantItem> {
+  const trimmedPrompt = prompt.trim();
   return apiJson<VariantItem>(
     `/api/v1/variants/${variantId}/items/${itemId}/regenerate`,
-    { method: "POST" }
+    {
+      method: "POST",
+      body: trimmedPrompt ? JSON.stringify({ prompt: trimmedPrompt }) : undefined,
+    }
   );
 }

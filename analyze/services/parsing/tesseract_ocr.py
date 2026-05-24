@@ -28,16 +28,27 @@ class OCRResult:
     mean_confidence: float
 
 
+MATH_HEAVY_SUBJECTS = {
+    "математика",
+    "физика",
+    "химия",
+    "информатика",
+}
+
+
 class TesseractOCR:
     def __init__(self):
         self.enabled = _env_bool("TESSERACT_OCR_ENABLED", True)
         self.lang = os.getenv("TESSERACT_LANG", "rus+eng")
         self.psm = os.getenv("TESSERACT_PSM", "6")
         self.min_chars = _env_int("TESSERACT_MIN_CHARS", 25)
-        self.min_confidence = _env_int("TESSERACT_MIN_CONFIDENCE", 45)
+        self.min_confidence = _env_int("TESSERACT_MIN_CONFIDENCE", 65)
 
-    def extract_text(self, image_bytes: bytes) -> OCRResult:
+    def extract_text(self, image_bytes: bytes, *, subject: str = "") -> OCRResult:
         if not self.enabled:
+            return OCRResult(text="", accepted=False, mean_confidence=0)
+
+        if is_math_heavy_subject(subject):
             return OCRResult(text="", accepted=False, mean_confidence=0)
 
         try:
@@ -103,3 +114,8 @@ class TesseractOCR:
         text = re.sub(r"\s+([,.;:!?])", r"\1", text)
         text = re.sub(r"\n{3,}", "\n\n", text)
         return text.strip()
+
+
+def is_math_heavy_subject(subject: str | None) -> bool:
+    normalized = (subject or "").strip().casefold()
+    return normalized in MATH_HEAVY_SUBJECTS

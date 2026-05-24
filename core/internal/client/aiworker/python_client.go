@@ -128,6 +128,7 @@ func (c *PythonClient) Generate(ctx context.Context, req domain.GenerateRequest)
 		"task_id", req.TaskID.String(),
 		"task_item_id", req.TaskItemID.String(),
 		"variant_number", req.VariantNumber,
+		"custom_prompt_bytes", len(req.CustomPrompt),
 	)
 
 	var resp struct {
@@ -188,11 +189,12 @@ func (c *PythonClient) Validate(ctx context.Context, req domain.ValidateRequest)
 	return resp.Valid, nil
 }
 
-func (c *PythonClient) Export(ctx context.Context, task *domain.Task) (*domain.ExportResult, error) {
+func (c *PythonClient) Export(ctx context.Context, task *domain.Task, format string) (*domain.ExportResult, error) {
 	c.logger.InfoContext(ctx, "ai export request started",
 		"user_id", task.UserID.String(),
 		"task_id", task.ID.String(),
 		"variants_count", len(task.Variants),
+		"format", format,
 	)
 
 	var body bytes.Buffer
@@ -200,7 +202,11 @@ func (c *PythonClient) Export(ctx context.Context, task *domain.Task) (*domain.E
 		return nil, err
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/export", &body)
+	path := "/export"
+	if format != "" {
+		path += "?format=" + format
+	}
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+path, &body)
 	if err != nil {
 		return nil, err
 	}
@@ -236,7 +242,11 @@ func (c *PythonClient) Export(ctx context.Context, task *domain.Task) (*domain.E
 
 	filename := resp.Header.Get("X-Filename")
 	if filename == "" {
-		filename = "task-export.docx"
+		if format == "pdf" {
+			filename = "task-export.pdf"
+		} else {
+			filename = "task-export.docx"
+		}
 	}
 	contentDisposition := resp.Header.Get("Content-Disposition")
 	contentType := resp.Header.Get("Content-Type")
