@@ -17,14 +17,9 @@ export function VariantCard({ taskId, variant, taskItems, a4 = true }: Props) {
     return oa - ob;
   });
 
+  void a4;
   return (
-    <article
-      className={
-        a4
-          ? "glass-card overflow-hidden flex flex-col"
-          : "glass-card flex flex-col"
-      }
-    >
+    <article className="glass-card">
       <header className="flex items-center justify-between px-5 pt-4 pb-2">
         <h3 className="text-[17px] font-bold text-ink-900 tracking-tight">
           Вариант {variant.variant_number}
@@ -34,7 +29,7 @@ export function VariantCard({ taskId, variant, taskItems, a4 = true }: Props) {
         </span>
       </header>
 
-      <div className="px-4 pb-3 flex-1 overflow-y-auto">
+      <div className="px-4 pb-3">
         {sortedItems.map((item) => (
           <VariantItem
             key={item.id}
