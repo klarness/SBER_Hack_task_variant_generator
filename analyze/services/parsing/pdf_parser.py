@@ -50,7 +50,7 @@ def _normalize_pdf_token(text: str) -> str:
 def _normalize_pdf_line(text: str) -> str:
     text = _normalize_pdf_token(text)
     text = re.sub(r"\s+", " ", text).strip()
-    text = re.sub(r"(?<=[A-Za-z])\s*(\d+)(?=[A-Za-z+\-*/=);,\s]|$)", r"^\1", text)
+    text = re.sub(r"(?<=[A-Za-z])(\d+)(?=[A-Za-z+\-*/=);,\s]|$)", r"^\1", text)
     text = re.sub(r"(?<=\))\s*(\d+)(?=[;,\s]|$)", r"^\1", text)
     text = re.sub(r"\s*([+\-*/=])\s*", r"\1", text)
     text = re.sub(r"\s+([,.;:!?])", r"\1", text)
@@ -110,30 +110,31 @@ class PDFParser:
     async def parse(self, file_bytes: bytes, subject: str = "") -> str:
         doc = fitz.open(stream=file_bytes, filetype="pdf")
 
+        page_count = len(doc)
+        math_ocr_pages = [""] * page_count
         if PDF_MATH_OCR_ENABLED:
-            ocr_text = await self._extract_pages_with_math_ocr(doc)
-            if ocr_text:
-                return ocr_text
+            math_ocr_pages = await self._extract_pages_with_math_ocr(doc)
 
+        pdfplumber_pages = self._extract_text_pages_with_pdfplumber(file_bytes)
         full_text = []
         image_tasks = []
-        extracted_text = self._extract_text_with_pdfplumber(file_bytes)
 
-        if extracted_text:
-            full_text.append(extracted_text)
-        elif PDF_TESSERACT_OCR_ENABLED:
-            ocr_text = await self._extract_pages_with_tesseract_ocr(doc, subject=subject)
-            if ocr_text:
-                return ocr_text
-
-        for page_index in range(len(doc)):
+        for page_index in range(page_count):
             page = doc[page_index]
 
-            page_text = "" if extracted_text else self._extract_page_text(page)
-
+            page_text = math_ocr_pages[page_index].strip()
+            page_was_ocr_rendered = bool(page_text)
+            if not page_text and page_index < len(pdfplumber_pages):
+                page_text = pdfplumber_pages[page_index].strip()
+            if not page_text:
+                page_text = self._extract_page_text(page)
+            if not page_text and PDF_TESSERACT_OCR_ENABLED:
+                page_text = await self._extract_page_with_tesseract_ocr_safe(page, subject=subject)
             if page_text:
-                full_text.append(page_text)
+                full_text.append(f"--- Страница {page_index + 1} ---\n{page_text}")
 
+            if page_was_ocr_rendered:
+                continue
             images = page.get_images(full=True)
 
             for image_info in images:
@@ -160,16 +161,15 @@ class PDFParser:
 
         return "\n".join(full_text)
 
-    async def _extract_pages_with_math_ocr(self, doc: fitz.Document) -> str:
+    async def _extract_pages_with_math_ocr(self, doc: fitz.Document) -> list[str]:
         page_tasks = [
             self._extract_page_with_math_ocr_safe(page)
             for page in doc
         ]
         if not page_tasks:
-            return ""
+            return []
 
-        page_results = await asyncio.gather(*page_tasks)
-        return "\n\n".join(text for text in page_results if text)
+        return await asyncio.gather(*page_tasks)
 
     async def _extract_pages_with_tesseract_ocr(self, doc: fitz.Document, subject: str = "") -> str:
         page_tasks = [
@@ -216,6 +216,9 @@ class PDFParser:
         return pixmap.tobytes("png")
 
     def _extract_text_with_pdfplumber(self, file_bytes: bytes) -> str:
+        return "\n".join(self._extract_text_pages_with_pdfplumber(file_bytes))
+
+    def _extract_text_pages_with_pdfplumber(self, file_bytes: bytes) -> list[str]:
         try:
             with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
                 pages = []
@@ -230,11 +233,13 @@ class PDFParser:
 
                     if normalized_text:
                         pages.append(normalized_text)
+                    else:
+                        pages.append("")
 
-                return "\n".join(pages)
+                return pages
         except Exception as error:
             print(f"PDF pdfplumber text extraction error: {error}")
-            return ""
+            return []
 
     def _normalize_pdfplumber_text(self, text: str) -> str:
         lines = [

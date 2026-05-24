@@ -72,20 +72,20 @@ async def analyze(
 ):
     parsed_parts: list[str] = []
 
-    for file in files or []:
+    for file_index, file in enumerate(files or [], start=1):
+        filename = file.filename or f"file_{file_index}"
         try:
             raw_text = await extraction_service.parse(file, subject=subject)
         except HTTPException:
             raise
         except Exception as exc:
-            filename = file.filename or "uploaded file"
             raise HTTPException(status_code=502, detail=f"File parsing failed for {filename}: {exc}") from exc
         normalized_text = TextNormalizer.normalize(raw_text)
         if normalized_text:
-            parsed_parts.append(normalized_text)
+            parsed_parts.append(f"=== Файл {file_index}: {filename} ===\n{normalized_text}")
 
     if text.strip():
-        parsed_parts.append(TextNormalizer.normalize(text))
+        parsed_parts.append(f"=== Текст, введенный вручную ===\n{TextNormalizer.normalize(text)}")
 
     original_text = "\n\n".join(parsed_parts).strip()
     if not original_text:
