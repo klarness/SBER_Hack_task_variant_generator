@@ -1,7 +1,9 @@
 import io
+import html
 import re
 from typing import Any
 from urllib.parse import quote
+from xml.etree import ElementTree
 
 from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH
@@ -115,11 +117,11 @@ def _add_variants(document: Document, task: dict[str, Any]) -> None:
                 continue
 
             status = _clean_text(item.get("status")) or "ready"
-            content = _clean_text(item.get("content"))
+            content = str(item.get("content") or "").strip()
             if status == "failed":
                 _add_failed_item(document, item_index, _clean_text(item.get("error_message")))
             elif content:
-                _add_numbered_text(document, item_index, content)
+                _add_numbered_content(document, item_index, content)
             else:
                 _add_failed_item(document, item_index, "Пустой текст задания.")
 
@@ -147,6 +149,185 @@ def _add_numbered_text(document: Document, index: int, text: str) -> None:
     for line in lines[1:]:
         paragraph.add_run().add_break()
         _add_rich_text(paragraph, line)
+
+
+def _add_numbered_content(document: Document, index: int, content: str) -> None:
+    if not _looks_like_html(content):
+        _add_numbered_text(document, index, _clean_text(content))
+        return
+
+    root = _parse_html_fragment(content)
+    if root is None:
+        _add_numbered_text(document, index, _html_to_plain_text(content))
+        return
+
+    document.add_paragraph(f"{index}.")
+    _add_html_blocks(document, root)
+
+
+def _looks_like_html(value: str) -> bool:
+    return bool(re.search(r"<\s*(p|br|strong|b|em|i|u|s|ul|ol|li|table|tr|td|th|h2|h3)\b", value, flags=re.I))
+
+
+def _parse_html_fragment(value: str) -> ElementTree.Element | None:
+    try:
+        wrapped = f"<root>{value}</root>"
+        return ElementTree.fromstring(wrapped)
+    except ElementTree.ParseError as error:
+        print(f"DOCX export HTML parse error: {error}")
+        return None
+
+
+def _add_html_blocks(document: Document, root: ElementTree.Element) -> None:
+    for child in root:
+        tag = _html_tag(child)
+
+        if tag == "table":
+            _add_html_table(document, child)
+            continue
+
+        if tag in {"ul", "ol"}:
+            _add_html_list(document, child, ordered=tag == "ol")
+            continue
+
+        if tag in {"p", "div", "h2", "h3"}:
+            paragraph = document.add_paragraph()
+            if tag in {"h2", "h3"}:
+                for run in paragraph.runs:
+                    run.bold = True
+            _add_html_inline(paragraph, child)
+            continue
+
+        text = _html_node_plain_text(child)
+        if text:
+            paragraph = document.add_paragraph()
+            _add_rich_text(paragraph, text)
+
+
+def _add_html_list(document: Document, node: ElementTree.Element, *, ordered: bool) -> None:
+    index = 1
+    for child in node:
+        if _html_tag(child) != "li":
+            continue
+        paragraph = document.add_paragraph()
+        paragraph.add_run(f"{index}. " if ordered else "• ")
+        _add_html_inline(paragraph, child)
+        index += 1
+
+
+def _add_html_table(document: Document, node: ElementTree.Element) -> None:
+    rows = [
+        row
+        for row in node.iter()
+        if _html_tag(row) == "tr"
+    ]
+    if not rows:
+        return
+
+    table_cells = []
+    max_cols = 0
+    for row in rows:
+        cells = [
+            cell
+            for cell in list(row)
+            if _html_tag(cell) in {"td", "th"}
+        ]
+        if cells:
+            table_cells.append(cells)
+            max_cols = max(max_cols, len(cells))
+
+    if not table_cells or max_cols == 0:
+        return
+
+    table = document.add_table(rows=len(table_cells), cols=max_cols)
+    table.style = "Table Grid"
+
+    for row_index, cells in enumerate(table_cells):
+        for col_index, cell_node in enumerate(cells):
+            cell = table.rows[row_index].cells[col_index]
+            paragraph = cell.paragraphs[0]
+            _add_html_inline(paragraph, cell_node, bold=_html_tag(cell_node) == "th")
+
+
+def _add_html_inline(
+    paragraph,
+    node: ElementTree.Element,
+    *,
+    bold: bool = False,
+    italic: bool = False,
+    underline: bool = False,
+    strike: bool = False,
+) -> None:
+    tag = _html_tag(node)
+    bold = bold or tag in {"strong", "b"}
+    italic = italic or tag in {"em", "i"}
+    underline = underline or tag == "u"
+    strike = strike or tag in {"s", "strike"}
+
+    if node.text:
+        _add_rich_text_with_marks(paragraph, html.unescape(node.text), bold=bold, italic=italic, underline=underline, strike=strike)
+
+    for child in node:
+        child_tag = _html_tag(child)
+        if child_tag == "br":
+            paragraph.add_run().add_break()
+        elif child_tag in {"p", "div"} and paragraph.text:
+            paragraph.add_run().add_break()
+            _add_html_inline(paragraph, child, bold=bold, italic=italic, underline=underline, strike=strike)
+        else:
+            _add_html_inline(paragraph, child, bold=bold, italic=italic, underline=underline, strike=strike)
+
+        if child.tail:
+            _add_rich_text_with_marks(paragraph, html.unescape(child.tail), bold=bold, italic=italic, underline=underline, strike=strike)
+
+
+def _add_rich_text_with_marks(
+    paragraph,
+    text: str,
+    *,
+    bold: bool = False,
+    italic: bool = False,
+    underline: bool = False,
+    strike: bool = False,
+) -> None:
+    for segment_type, value in _split_latex_segments(text):
+        if segment_type == "math":
+            _add_formula_text(paragraph, value)
+        else:
+            run = paragraph.add_run(value)
+            run.bold = bold
+            run.italic = italic
+            run.underline = underline
+            run.font.strike = strike
+
+
+def _html_tag(node: ElementTree.Element) -> str:
+    return str(node.tag).lower()
+
+
+def _html_node_plain_text(node: ElementTree.Element) -> str:
+    parts = []
+    if node.text:
+        parts.append(node.text)
+    for child in node:
+        if _html_tag(child) == "br":
+            parts.append("\n")
+        else:
+            parts.append(_html_node_plain_text(child))
+        if child.tail:
+            parts.append(child.tail)
+    return _clean_text(html.unescape(" ".join(parts)))
+
+
+def _html_to_plain_text(value: str) -> str:
+    text = html.unescape(value)
+    text = re.sub(r"(?is)<\s*br\s*/?\s*>", "\n", text)
+    text = re.sub(r"(?is)<\s*/\s*(p|div|tr)\s*>", "\n", text)
+    text = re.sub(r"(?is)<\s*/\s*(td|th)\s*>", " | ", text)
+    text = re.sub(r"(?is)<[^>]+>", "", text)
+    text = re.sub(r"\s+\|", " |", text)
+    text = re.sub(r"\|\s+\|", "|", text)
+    return _clean_text(text)
 
 
 def _add_text_block(document: Document, text: str) -> None:

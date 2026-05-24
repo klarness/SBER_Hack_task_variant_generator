@@ -25,12 +25,15 @@ export function VariantItem({
   const qc = useQueryClient();
   const [localContent, setLocalContent] = useState(item.content);
   const [isEditing, setIsEditing] = useState(false);
+  const [draftContent, setDraftContent] = useState(item.content);
   const isFailed = item.status === "failed";
 
   const editMutation = useMutation({
     mutationFn: (content: string) =>
       editVariantItem(item.variant_id, item.id, content),
     onSuccess: (updated) => {
+      setLocalContent(updated.content);
+      setDraftContent(updated.content);
       patchInCache(qc, taskId, item.id, updated);
     },
   });
@@ -39,6 +42,7 @@ export function VariantItem({
     mutationFn: () => regenerateVariantItem(item.variant_id, item.id),
     onSuccess: (updated) => {
       setLocalContent(updated.content);
+      setDraftContent(updated.content);
       patchInCache(qc, taskId, item.id, updated);
     },
   });
@@ -70,7 +74,10 @@ export function VariantItem({
           {!isFailed && (
             <button
               type="button"
-              onClick={() => setIsEditing((value) => !value)}
+              onClick={() => {
+                setDraftContent(localContent);
+                setIsEditing((value) => !value);
+              }}
               title={isEditing ? "Закрыть редактор" : "Редактировать"}
               className={cn(
                 "w-8 h-8 inline-flex items-center justify-center rounded-lg",
@@ -117,13 +124,18 @@ export function VariantItem({
           </div>
         ) : isEditing ? (
           <RichEditor
-            value={localContent}
-            onChange={setLocalContent}
+            value={draftContent}
+            onChange={setDraftContent}
             onCommit={(html) => {
+              setLocalContent(html);
               editMutation.mutate(html);
               setIsEditing(false);
             }}
-            showToolbar={false}
+            onCancel={() => {
+              setDraftContent(localContent);
+              setIsEditing(false);
+            }}
+            compact
           />
         ) : (
           <LatexText
