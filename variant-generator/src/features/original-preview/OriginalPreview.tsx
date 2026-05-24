@@ -1,8 +1,7 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQueryClient, type QueryClient } from "@tanstack/react-query";
-import { Loader2, Pencil, RotateCw, X } from "lucide-react";
+import { Loader2, Pencil, X } from "lucide-react";
 import { RichEditor } from "@/features/editor/RichEditor";
-import { RegeneratePromptDialog } from "@/features/regeneration/RegeneratePromptDialog";
 import { editTaskItem } from "@/shared/api/tasks";
 import { regenerateVariantItem } from "@/shared/api/variants";
 import { cn } from "@/shared/lib/cn";
@@ -61,7 +60,6 @@ function OriginalTaskItem({ task, item }: { task: Task; item: TaskItem }) {
   const [draftContent, setDraftContent] = useState(item.content);
   const [draftContext, setDraftContext] = useState(item.context ?? "");
   const [isEditing, setIsEditing] = useState(false);
-  const [isPromptOpen, setIsPromptOpen] = useState(false);
 
   useEffect(() => {
     setLocalContent(item.content);
@@ -69,6 +67,22 @@ function OriginalTaskItem({ task, item }: { task: Task; item: TaskItem }) {
     setDraftContent(item.content);
     setDraftContext(item.context ?? "");
   }, [item.content, item.context]);
+
+  const regenMutation = useMutation({
+    mutationFn: async () => {
+      const targets = relatedVariantItems(task, item.id);
+      const updated: VariantItem[] = [];
+      for (const target of targets) {
+        updated.push(
+          await regenerateVariantItem(target.variantId, target.itemId)
+        );
+      }
+      return updated;
+    },
+    onSuccess: (updatedItems) => {
+      patchVariantItemsInCache(qc, task.id, updatedItems);
+    },
+  });
 
   const editMutation = useMutation({
     mutationFn: (input: { content: string; context?: string }) =>
@@ -79,23 +93,9 @@ function OriginalTaskItem({ task, item }: { task: Task; item: TaskItem }) {
       setDraftContent(updated.content);
       setDraftContext(updated.context ?? "");
       patchTaskItemInCache(qc, task.id, updated);
-    },
-  });
-
-  const regenMutation = useMutation({
-    mutationFn: async (prompt?: string) => {
-      const targets = relatedVariantItems(task, item.id);
-      const updated: VariantItem[] = [];
-      for (const target of targets) {
-        updated.push(
-          await regenerateVariantItem(target.variantId, target.itemId, prompt)
-        );
+      if (relatedVariantItems(task, item.id).length > 0) {
+        regenMutation.mutate();
       }
-      return updated;
-    },
-    onSuccess: (updatedItems) => {
-      patchVariantItemsInCache(qc, task.id, updatedItems);
-      setIsPromptOpen(false);
     },
   });
 
@@ -107,19 +107,6 @@ function OriginalTaskItem({ task, item }: { task: Task; item: TaskItem }) {
     setIsEditing(false);
     return updated;
   };
-
-  const handleOpenRegenerationPrompt = async () => {
-    try {
-      if (isEditing) {
-        await save();
-      }
-      setIsPromptOpen(true);
-    } catch {
-      // Error state is rendered below.
-    }
-  };
-
-  const hasGeneratedItems = relatedVariantItems(task, item.id).length > 0;
 
   return (
     <div className="py-3.5 px-3 -mx-1 border-b border-white/40 last:border-b-0 rounded-xl ring-1 ring-transparent hover:ring-accent/15 hover:bg-white/30 transition">
@@ -143,24 +130,6 @@ function OriginalTaskItem({ task, item }: { task: Task; item: TaskItem }) {
             )}
           >
             {isEditing ? <X size={14} /> : <Pencil size={14} />}
-          </button>
-          <button
-            type="button"
-            onClick={handleOpenRegenerationPrompt}
-            disabled={!hasGeneratedItems || editMutation.isPending || regenMutation.isPending}
-            title="Перегенерировать связанные варианты"
-            className={cn(
-              "w-8 h-8 inline-flex items-center justify-center rounded-lg",
-              "border border-border bg-white/60 backdrop-blur-sm",
-              "text-accent hover:bg-accent hover:text-white hover:border-accent transition",
-              "disabled:opacity-50 disabled:cursor-not-allowed"
-            )}
-          >
-            {regenMutation.isPending ? (
-              <Loader2 size={14} className="animate-spin" />
-            ) : (
-              <RotateCw size={14} />
-            )}
           </button>
         </div>
       </div>
@@ -200,6 +169,13 @@ function OriginalTaskItem({ task, item }: { task: Task; item: TaskItem }) {
         </>
       )}
 
+      {regenMutation.isPending && (
+        <p className="mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-accent-ink">
+          <Loader2 size={13} className="animate-spin" />
+          Обновляем варианты после правки исходника...
+        </p>
+      )}
+
       {editMutation.isError && (
         <p className="mt-2 text-xs text-danger">
           Не удалось сохранить исходное задание. Проверьте текст и попробуйте еще раз.
@@ -207,18 +183,9 @@ function OriginalTaskItem({ task, item }: { task: Task; item: TaskItem }) {
       )}
       {regenMutation.isError && (
         <p className="mt-2 text-xs text-danger">
-          Не удалось перегенерировать связанные варианты.
+          Исходник сохранен, но связанные варианты не удалось обновить автоматически.
         </p>
       )}
-
-      <RegeneratePromptDialog
-        open={isPromptOpen}
-        title={`Перегенерировать варианты задания ${item.order}`}
-        description="Можно уточнить, что изменить во всех вариантах этого исходного пункта. Если исходник открыт в редакторе, он сначала сохраняется."
-        loading={regenMutation.isPending}
-        onCancel={() => setIsPromptOpen(false)}
-        onSubmit={(prompt) => regenMutation.mutate(prompt)}
-      />
     </div>
   );
 }

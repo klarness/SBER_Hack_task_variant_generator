@@ -74,6 +74,26 @@ func (s *TaskService) ListTasks(ctx context.Context, userID uuid.UUID, filter do
 	return tasks, nil
 }
 
+func (s *TaskService) DeleteTask(ctx context.Context, userID, taskID uuid.UUID) error {
+	s.logger.InfoContext(ctx, "task delete requested",
+		"user_id", userID.String(),
+		"task_id", taskID.String(),
+	)
+	if err := s.repo.DeleteTask(ctx, userID, taskID); err != nil {
+		s.logger.ErrorContext(ctx, "task delete failed",
+			"user_id", userID.String(),
+			"task_id", taskID.String(),
+			"error", err,
+		)
+		return err
+	}
+	s.logger.InfoContext(ctx, "task delete completed",
+		"user_id", userID.String(),
+		"task_id", taskID.String(),
+	)
+	return nil
+}
+
 func (s *TaskService) EditVariantItem(ctx context.Context, userID, variantID, itemID uuid.UUID, content string) (*domain.VariantItem, error) {
 	s.logger.InfoContext(ctx, "variant item manual edit requested",
 		"user_id", userID.String(),

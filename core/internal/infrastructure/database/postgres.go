@@ -224,6 +224,20 @@ func (r *PostgresRepository) ListTasks(ctx context.Context, userID uuid.UUID, fi
 	return tasks, rows.Err()
 }
 
+func (r *PostgresRepository) DeleteTask(ctx context.Context, userID, taskID uuid.UUID) error {
+	tag, err := r.pool.Exec(ctx, `
+		DELETE FROM tasks
+		WHERE id = $1 AND user_id = $2
+	`, taskID, userID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return domain.ErrNotFound
+	}
+	return nil
+}
+
 func (r *PostgresRepository) SaveVariants(ctx context.Context, userID, taskID uuid.UUID, variants []domain.Variant) error {
 	tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {

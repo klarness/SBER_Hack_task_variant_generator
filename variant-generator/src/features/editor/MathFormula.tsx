@@ -33,6 +33,11 @@ export const MathFormula = TiptapNode.create({
           "data-latex": attributes.latex,
         }),
       },
+      openOnCreate: {
+        default: false,
+        parseHTML: () => false,
+        renderHTML: () => ({}),
+      },
     };
   },
 
@@ -138,6 +143,12 @@ function MathFormulaView({
   const preview = useMemo(() => renderFormulaHtml(draft), [draft]);
 
   useEffect(() => {
+    if (!node.attrs.openOnCreate) return;
+    setIsOpen(true);
+    updateAttributes({ openOnCreate: false });
+  }, [node.attrs.openOnCreate, updateAttributes]);
+
+  useEffect(() => {
     if (isOpen) {
       setDraft(latex);
     }
@@ -172,6 +183,21 @@ function MathFormulaView({
         updateAttributes({ latex: nextLatex });
       }
       setDraft(nextLatex);
+    }
+    setIsOpen(false);
+  };
+
+  const close = () => {
+    if (!latex.trim()) {
+      const pos = getPos();
+      if (typeof pos === "number") {
+        editor
+          .chain()
+          .focus()
+          .deleteRange({ from: pos, to: pos + node.nodeSize })
+          .run();
+        return;
+      }
     }
     setIsOpen(false);
   };
@@ -215,7 +241,7 @@ function MathFormulaView({
             <button
               type="button"
               className="math-formula-icon-button"
-              onClick={() => setIsOpen(false)}
+              onClick={close}
               aria-label="Закрыть"
             >
               <X size={14} />
@@ -261,7 +287,7 @@ function MathFormulaView({
             <button
               type="button"
               className="math-formula-secondary"
-              onClick={() => setIsOpen(false)}
+              onClick={close}
             >
               Отмена
             </button>

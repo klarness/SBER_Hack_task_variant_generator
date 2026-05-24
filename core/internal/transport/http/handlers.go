@@ -170,6 +170,21 @@ func (h *Handlers) GetTask(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 	writeJSON(w, stdhttp.StatusOK, task)
 }
 
+func (h *Handlers) DeleteTask(w stdhttp.ResponseWriter, r *stdhttp.Request) {
+	userID, _ := userIDFromContext(r.Context())
+	taskID, err := parseUUIDParam(r, "id")
+	if err != nil {
+		writeError(w, stdhttp.StatusBadRequest, err)
+		return
+	}
+
+	if err = h.taskService.DeleteTask(r.Context(), userID, taskID); err != nil {
+		writeDomainError(w, err)
+		return
+	}
+	w.WriteHeader(stdhttp.StatusNoContent)
+}
+
 func (h *Handlers) EditVariantItem(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 	userID, _ := userIDFromContext(r.Context())
 	variantID, err := parseUUIDParam(r, "id")

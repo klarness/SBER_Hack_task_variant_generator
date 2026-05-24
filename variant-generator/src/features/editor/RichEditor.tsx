@@ -101,19 +101,13 @@ export function RichEditor({
   const inTable = editor.isActive("table");
 
   const insertFormula = () => {
-    const selectedText = editor.state.doc.textBetween(
-      editor.state.selection.from,
-      editor.state.selection.to,
-      " "
-    );
-    const raw = window.prompt("Введите LaTeX без символов $", selectedText || "x^2 + 5x + 6 = 0");
-    if (!raw?.trim()) return;
-
-    const formula = raw.trim().replace(/^\$|\$$/g, "");
     editor
       .chain()
       .focus()
-      .insertContent({ type: "mathFormula", attrs: { latex: formula } })
+      .insertContent({
+        type: "mathFormula",
+        attrs: { latex: "", openOnCreate: true },
+      })
       .run();
   };
 

@@ -116,8 +116,8 @@ export function UploadPage() {
               Загрузить работу
             </h1>
             <p className="mt-2 text-sm text-ink-700">
-              Добавьте один или несколько файлов одной работы — система разберёт
-              их как единый эталон.
+              Добавьте один или несколько файлов одной работы. После обработки
+              вы попадете на экран проверки исходника, вариантов и экспорта.
             </p>
           </div>
 
@@ -176,7 +176,7 @@ export function UploadPage() {
                 loading={createMutation.isPending}
               >
                 <Sparkles size={18} strokeWidth={1.75} />
-                Сгенерировать варианты
+                Начать обработку
               </Button>
             </div>
           </div>

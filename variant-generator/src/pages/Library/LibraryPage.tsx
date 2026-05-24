@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertCircle,
   CheckCircle2,
@@ -12,8 +12,10 @@ import {
   RefreshCcw,
   Search,
   Sparkles,
+  Trash2,
+  X,
 } from "lucide-react";
-import { listTasks } from "@/shared/api/tasks";
+import { deleteTask, listTasks } from "@/shared/api/tasks";
 import { Input } from "@/shared/ui/Input";
 import { Button } from "@/shared/ui/Button";
 import { Card } from "@/shared/ui/Card";
@@ -32,6 +34,8 @@ const STATUS_OPTIONS: Array<{ value: StatusFilter; label: string }> = [
 export function LibraryPage() {
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<StatusFilter>("all");
+  const [taskToDelete, setTaskToDelete] = useState<Task | null>(null);
+  const queryClient = useQueryClient();
 
   const tasksQuery = useQuery({
     queryKey: ["tasks", "library", query, status],
@@ -42,6 +46,14 @@ export function LibraryPage() {
         limit: 100,
       }),
     placeholderData: (previous) => previous,
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: deleteTask,
+    onSuccess: async () => {
+      setTaskToDelete(null);
+      await queryClient.invalidateQueries({ queryKey: ["tasks"] });
+    },
   });
 
   const tasks = tasksQuery.data?.items ?? [];
@@ -162,11 +174,30 @@ export function LibraryPage() {
         {tasks.length > 0 && (
           <div className="grid gap-3">
             {tasks.map((task) => (
-              <TaskRow key={task.id} task={task} />
+              <TaskRow
+                key={task.id}
+                task={task}
+                onDelete={() => setTaskToDelete(task)}
+              />
             ))}
           </div>
         )}
       </main>
+
+      {taskToDelete && (
+        <DeleteTaskDialog
+          task={taskToDelete}
+          loading={deleteMutation.isPending}
+          error={deleteMutation.error}
+          onClose={() => {
+            if (!deleteMutation.isPending) {
+              deleteMutation.reset();
+              setTaskToDelete(null);
+            }
+          }}
+          onConfirm={() => deleteMutation.mutate(taskToDelete.id)}
+        />
+      )}
     </div>
   );
 }
@@ -199,11 +230,14 @@ function SummaryCard({
   );
 }
 
-function TaskRow({ task }: { task: Task }) {
+function TaskRow({ task, onDelete }: { task: Task; onDelete: () => void }) {
   return (
-    <Link to={`/workspace/${task.id}`} className="block">
-      <Card hoverable className="p-4">
-        <div className="flex items-start gap-4">
+    <Card hoverable className="p-4">
+      <div className="flex items-start gap-4">
+        <Link
+          to={`/workspace/${task.id}`}
+          className="min-w-0 flex-1 flex items-start gap-4"
+        >
           <div className="w-10 h-10 rounded-lg bg-surface-base border border-border-subtle grid place-items-center text-sber-700 shrink-0">
             <FileText size={18} strokeWidth={1.75} />
           </div>
@@ -226,13 +260,93 @@ function TaskRow({ task }: { task: Task }) {
               {task.error_message || task.original_text || "Текст еще не извлечен"}
             </p>
           </div>
+        </Link>
 
-          <div className="text-sm font-medium text-sber-700 shrink-0">
+        <div className="shrink-0 flex items-center gap-2">
+          <Link
+            to={`/workspace/${task.id}`}
+            className="hidden sm:inline-flex h-9 items-center rounded-lg px-3 text-sm font-medium text-sber-700 hover:bg-sber-50 transition"
+          >
             Открыть
-          </div>
+          </Link>
+          <button
+            type="button"
+            onClick={onDelete}
+            className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-ink-500 hover:bg-red-50 hover:text-danger transition"
+            title="Удалить из библиотеки"
+            aria-label={`Удалить ${task.title || "работу"}`}
+          >
+            <Trash2 size={16} strokeWidth={1.75} />
+          </button>
         </div>
-      </Card>
-    </Link>
+      </div>
+    </Card>
+  );
+}
+
+function DeleteTaskDialog({
+  task,
+  loading,
+  error,
+  onClose,
+  onConfirm,
+}: {
+  task: Task;
+  loading: boolean;
+  error: Error | null;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6 bg-ink-900/30 backdrop-blur-sm"
+      role="dialog"
+      aria-modal="true"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-md rounded-2xl border border-border-subtle bg-white p-6 shadow-glassHover"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flex items-start gap-4">
+          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-red-50 text-danger">
+            <Trash2 size={19} strokeWidth={1.75} />
+          </div>
+          <div className="min-w-0">
+            <h2 className="text-lg font-bold text-ink-900">Удалить работу?</h2>
+            <p className="mt-2 text-sm text-ink-700 leading-relaxed">
+              Работа «{task.title || "Без названия"}» будет удалена из библиотеки
+              вместе с исходником, вариантами и историей правок.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={loading}
+            className="ml-auto inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-ink-500 hover:bg-surface-subtle transition disabled:opacity-50"
+            aria-label="Закрыть"
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        {error && (
+          <div className="mt-4 rounded-xl border border-danger/20 bg-red-50 px-3 py-2 text-sm text-danger">
+            {error.message}
+          </div>
+        )}
+
+        <div className="mt-6 flex justify-end gap-3">
+          <Button variant="secondary" onClick={onClose} disabled={loading}>
+            Отмена
+          </Button>
+          <Button variant="danger" onClick={onConfirm} loading={loading}>
+            <Trash2 size={16} strokeWidth={1.75} />
+            Удалить
+          </Button>
+        </div>
+      </div>
+    </div>
   );
 }
 

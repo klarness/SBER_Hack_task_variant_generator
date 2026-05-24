@@ -30,6 +30,12 @@ export async function getTask(id: string): Promise<Task> {
   return apiJson<Task>(`/api/v1/tasks/${id}`);
 }
 
+export async function deleteTask(id: string): Promise<void> {
+  await apiFetch(`/api/v1/tasks/${id}`, {
+    method: "DELETE",
+  });
+}
+
 export async function editTaskItem(
   taskId: string,
   itemId: string,
