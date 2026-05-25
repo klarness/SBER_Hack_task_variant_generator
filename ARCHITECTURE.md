@@ -1,80 +1,62 @@
-# Архитектура и текущее состояние проекта
+# ARCHITECTURE.md
 
-Документ фиксирует фактическое состояние репозитория на текущий момент. Он нужен, чтобы быстро понять, какие сервисы есть, как они связаны, какие технологии используются и что уже реализовано.
+# Техническая архитектура продукта
 
-## Назначение системы
+Документ описывает фактическое техническое состояние проекта на 25 мая 2026 года. Его цель - дать полную картину перед защитой: какие сервисы есть, как они связаны, как проходит обработка файлов, какие библиотеки используются, какие возможности уже реализованы и какие ограничения остаются.
 
-Система генерирует варианты контрольной или проверочной работы на основе одного исходного задания.
+## 1. Назначение продукта
 
-Типовой сценарий:
+Продукт помогает учителю быстро получить несколько вариантов контрольной или проверочной работы на основе одного исходника.
 
-1. Учитель загружает один или несколько файлов с исходной работой.
-2. Python-сервис извлекает текст из файлов.
-3. Python-сервис отправляет единый распознанный текст в GigaChat для анализа.
-4. Go-сервис сохраняет исходную работу и атомарные задания в PostgreSQL.
-5. Go-сервис запускает генерацию вариантов через Python-сервис.
-6. Каждый сгенерированный пункт валидируется через Python-сервис.
-7. Результат сохраняется в PostgreSQL и отображается во фронтенде.
-8. Пользователь может вручную отредактировать пункт, перегенерировать отдельный пункт или экспортировать результат в DOCX.
+Основная идея:
 
-## Сервисы
+1. Учитель загружает один файл или несколько файлов одной работы.
+2. Система извлекает текст, формулы, таблицы и изображения из этих файлов.
+3. Распознанный текст объединяется в один исходник.
+4. LLM разбивает исходник на отдельные задания.
+5. Go-сервис сохраняет исходник и задания в PostgreSQL.
+6. Go-сервис запускает генерацию вариантов.
+7. Python-сервис через GigaChat генерирует и валидирует каждый пункт.
+8. Учитель проверяет исходник и варианты во фронтенде.
+9. Учитель может вручную редактировать задания, перегенерировать отдельные пункты и скачать результат в DOCX или PDF.
 
-В рабочей docker-compose цепочке используются:
+Важный продуктовый сценарий: если работа сфотографирована на телефон несколькими кадрами, пользователь может загрузить несколько JPG/PNG как одну работу. Сервис склеивает распознанный текст всех файлов и анализирует его как один общий исходник.
 
-- `frontend` - React/Vite приложение для загрузки работ, просмотра вариантов, редактирования и экспорта.
-- `core` - Go API, основной оркестратор системы.
-- `analyze` - Python AI-worker: парсинг файлов, вызовы GigaChat, генерация, валидация и DOCX-экспорт.
+## 2. Общая схема сервисов
+
+Проект состоит из трех основных приложений и инфраструктурных сервисов:
+
+```text
+Browser
+  |
+  | HTTP
+  v
+frontend: React/Vite
+  |
+  | /api/v1/*
+  v
+core: Go API / orchestrator
+  |             |
+  | SQL         | HTTP
+  v             v
+PostgreSQL     analyze: Python FastAPI / parser / AI worker / export
+  ^
+  |
+Valkey используется core для rate limit
+```
+
+Сервисы в `docker-compose.yaml`:
+
+- `frontend` - пользовательский интерфейс на React.
+- `core` - Go backend, основной оркестратор и единая точка API для фронтенда.
+- `analyze` - Python backend для парсинга файлов, работы с GigaChat, генерации, валидации и экспорта.
 - `postgres` - основная база данных.
-- `valkey` - Redis-compatible хранилище для rate limiter.
+- `valkey` - Redis-compatible хранилище для rate limit.
 - `migrate` - контейнер для применения SQL-миграций.
 
-В репозитории также есть `parser_text`, но сейчас он не участвует в основной рабочей цепочке. Текущий путь обработки идет через `core -> analyze`.
+В репозитории также есть `parser_text`, но сейчас он не участвует в основной рабочей цепочке. Основная цепочка: `frontend -> core -> analyze`.
 
-## Технологии
-
-### Go core
-
-Основные библиотеки:
-
-- `chi` - HTTP router.
-- `pgx/v5` - подключение и запросы к PostgreSQL.
-- `go-redis/v9` - клиент для Valkey/Redis.
-- `avast/retry-go/v4` - retry-логика генерации и валидации.
-- `google/uuid` - UUID.
-- `log/slog` - структурные JSON-логи.
-
-Архитектурный стиль: Clean Architecture / Hexagonal Architecture.
-
-### Python analyze
-
-Основные библиотеки:
-
-- `FastAPI` - HTTP API.
-- `uvicorn` - ASGI server.
-- `gigachat` - официальный клиент GigaChat.
-- `python-dotenv` - загрузка `.env`.
-- `json-repair` - ремонт некорректного JSON от LLM.
-- `python-docx` - чтение DOCX и сборка DOCX-экспорта.
-- `python-pptx` - чтение PPTX-презентаций.
-- `pymupdf`, `pdfplumber` - извлечение текста из PDF.
-- `pillow` - работа с изображениями.
-- `python-multipart` - multipart upload.
-
-### Frontend
-
-Основные библиотеки:
-
-- React 19.
-- Vite.
-- TypeScript.
-- TanStack Query.
-- React Router.
-- TipTap editor.
-- React Dropzone.
-- Tailwind CSS.
-- Lucide React icons.
-
-## Docker Compose
+## 3. Docker и порты
 
 Файл запуска находится в корне:
 
@@ -82,13 +64,15 @@
 docker-compose.yaml
 ```
 
-Основные порты:
+Порты:
 
-- frontend: `http://localhost:5173`
-- core: `http://localhost:8080`
-- analyze: `http://localhost:8000`
-- postgres: `localhost:5433 -> container:5432`
-- valkey: `localhost:6379`
+```text
+frontend: http://127.0.0.1:5173
+core:     http://127.0.0.1:8080
+analyze:  http://127.0.0.1:8000
+postgres: localhost:5433 -> container:5432
+valkey:   localhost:6379
+```
 
 Запуск:
 
@@ -96,134 +80,327 @@ docker-compose.yaml
 docker compose up -d --build
 ```
 
-## Переменные окружения
+Проверка healthcheck:
 
-### Core
+```bash
+curl http://127.0.0.1:8080/healthz
+curl http://127.0.0.1:8000/healthz
+```
 
-Основные переменные:
+Frontend в Docker запускается как Vite dev server на `5173`. Для Windows порт привязан к `127.0.0.1:5173`, чтобы не ловить проблемы с `localhost` и IPv6.
 
-- `HTTP_ADDR` - адрес HTTP-сервера, по умолчанию `:8080`.
-- `DATABASE_URL` - подключение к PostgreSQL.
-- `VALKEY_ADDR` - адрес Valkey.
-- `VALKEY_PASSWORD` - пароль Valkey, если нужен.
-- `VALKEY_DB` - номер базы Valkey.
-- `AI_WORKER_BASE_URL` - адрес Python-сервиса, в Docker обычно `http://analyze:8000`.
-- `AI_WORKER_CONCURRENCY` - ограничение одновременных AI-операций со стороны Go, сейчас по умолчанию `1`.
-- `RATE_LIMIT_CAPACITY` - вместимость token bucket, по умолчанию `30`.
-- `RATE_LIMIT_REFILL` - пополнение token bucket, по умолчанию `30`.
-- `RATE_LIMIT_WINDOW` - окно пополнения, по умолчанию `1m`.
-- `DEFAULT_VARIANT_COUNT` - количество вариантов по умолчанию, сейчас `2`.
-- `MAX_UPLOAD_MB` - максимальный размер загрузки, сейчас `32`.
+## 4. Основной пользовательский сценарий
 
-### Analyze / GigaChat
+### 4.1. Выбор предмета и загрузка
 
-Поддерживаемые способы передачи ключей:
+Пользователь открывает главную страницу, нажимает `Загрузить`, выбирает предмет и попадает на страницу загрузки.
 
-- `GIGACHAT_CREDENTIALS`
-- `GIGACHAT_AUTHORIZATION_KEY`
-- `GIGACHAT_CLIENT_SECRET`, если там лежит готовый Authorization Key
-- `GIGACHAT_CLIENT_ID` + `GIGACHAT_CLIENT_SECRET`, если нужно собрать credentials как base64 от `client_id:client_secret`
+Поддерживаемые предметы во фронтенде:
 
-Основные настройки:
+- русский язык;
+- математика;
+- история;
+- обществознание;
+- литература;
+- биология;
+- химия;
+- информатика;
+- физика;
+- также есть расширяемая модель предметных настроек.
 
-- `GIGACHAT_SCOPE`, обычно `GIGACHAT_API_PERS`.
-- `GIGACHAT_MODEL`, по умолчанию `GigaChat`.
-- `GIGACHAT_VISION_MODEL`, если нужен отдельный vision model.
-- `GIGACHAT_TIMEOUT`, по умолчанию `60.0`.
-- `GIGACHAT_VERIFY_SSL_CERTS`, для локальной разработки сейчас часто `false`.
-- `GIGACHAT_CONCURRENCY`, по умолчанию `1`.
+На странице загрузки пользователь указывает:
 
-Секреты нельзя коммитить в репозиторий.
+- название работы;
+- один или несколько файлов;
+- количество вариантов;
+- настройки генерации.
 
-## Архитектура Go core
+Фронтенд отправляет multipart-запрос в Go:
 
-Структура:
+```http
+POST /api/v1/tasks
+X-User-ID: <uuid>
+Content-Type: multipart/form-data
+```
+
+Поля:
+
+```text
+title
+subject
+settings
+variant_count
+files
+text, опционально
+```
+
+Несколько файлов отправляются повторением поля `files`:
+
+```bash
+-F "files=@page1.jpg"
+-F "files=@page2.jpg"
+-F "files=@page3.jpg"
+```
+
+Go также поддерживает альтернативное поле `files[]`.
+
+### 4.2. Создание задачи в Go
+
+Go получает multipart, валидирует:
+
+- наличие `X-User-ID`;
+- корректность `settings` как JSON;
+- количество вариантов от 2 до 10;
+- наличие хотя бы одного файла или ручного текста;
+- общий размер загрузки через `MAX_UPLOAD_MB`.
+
+После этого `core` создает запись `tasks` в PostgreSQL со статусом `processing` и сразу отвечает фронтенду `202 Accepted`. Дальше генерация идет асинхронно в goroutine.
+
+### 4.3. Анализ файлов
+
+Go вызывает Python:
+
+```http
+POST /analyze
+Content-Type: multipart/form-data
+```
+
+Python:
+
+1. Получает массив `files`.
+2. По очереди парсит каждый файл.
+3. Нормализует текст каждого файла.
+4. Склеивает части с разделителями:
+
+```text
+=== Файл 1: name1.docx ===
+...
+
+=== Файл 2: name2.pdf ===
+...
+```
+
+5. Если есть ручное поле `text`, добавляет его как отдельную часть.
+6. Отправляет общий `original_text` в GigaChat для структурного анализа.
+7. Получает JSON со списком атомарных заданий.
+8. Возвращает Go:
+
+```json
+{
+  "original_text": "...",
+  "items": [
+    {
+      "order": 1,
+      "context": "...",
+      "content": "..."
+    }
+  ],
+  "subject": "...",
+  "topic": "...",
+  "task_type": "...",
+  "difficulty": "..."
+}
+```
+
+В prompt анализа явно указано, что если исходник состоит из нескольких файлов или страниц, нужно разобрать все файлы и все страницы, не останавливаться на первом листе или первом варианте.
+
+### 4.4. Сохранение анализа
+
+Go сохраняет:
+
+- общий `original_text` в `tasks.original_text`;
+- предмет, тему, тип и сложность;
+- атомарные задания в `task_items`.
+
+После этого Go получает задачу с деталями из БД и запускает генерацию вариантов.
+
+### 4.5. Генерация вариантов
+
+Go использует fan-out / fan-in:
+
+1. Для каждого исходного `TaskItem` запускается отдельная goroutine.
+2. Внутри одной goroutine варианты для этого конкретного задания генерируются последовательно.
+3. Последовательность нужна для межвариантной уникальности: вариант 2 получает текст варианта 1, вариант 3 получает тексты вариантов 1 и 2.
+4. Для каждой попытки Go вызывает Python `/generate`, затем `/validate`.
+5. Если валидация вернула `false`, запускается повторная попытка.
+6. Всего до 3 попыток на пункт.
+7. Если все попытки провалились, пункт не ломает всю работу: создается `VariantItem` со статусом `failed`.
+8. После завершения все варианты сохраняются в PostgreSQL.
+
+Параллелизм на уровне Go сохраняется, но реальные AI-запросы ограничены конфигурацией, потому что GigaChat может иметь лимит одновременных запросов.
+
+### 4.6. Проверка и редактирование во фронтенде
+
+После генерации пользователь попадает в рабочий экран:
+
+1. `Проверьте исходник`.
+2. `Проверьте варианты`.
+3. `Скачайте работу`.
+
+Возможности:
+
+- редактировать исходные задания;
+- после сохранения исходного задания связанные варианты автоматически перегенерируются;
+- редактировать сгенерированные задания вручную;
+- перегенерировать отдельный пункт с пользовательским пояснением;
+- вставлять и редактировать формулы через визуальный редактор;
+- редактировать таблицы;
+- скачать выбранные варианты или все варианты.
+
+### 4.7. Экспорт
+
+Go получает запрос:
+
+```http
+GET /api/v1/tasks/{id}/export?format=docx
+GET /api/v1/tasks/{id}/export?format=pdf
+GET /api/v1/tasks/{id}/export?format=docx&variants=1,3
+```
+
+Go:
+
+1. Загружает задачу из PostgreSQL по `task_id` и `user_id`.
+2. Если указан `variants`, фильтрует список вариантов.
+3. Отправляет полный JSON задачи в Python `/export`.
+4. Python собирает DOCX или PDF.
+5. Go проксирует бинарный файл пользователю.
+
+Экспорт сейчас выводит только готовые варианты. Метаданные, таблица сложности и исходный вариант из экспортного документа убраны, чтобы файл выглядел как рабочий материал для выдачи ученикам.
+
+## 5. Go core
+
+Путь:
 
 ```text
 core/
   cmd/api/main.go
   internal/
+    client/aiworker/
+    config/
     domain/
-    infrastructure/
-      database/
-      ratelimit/
-    client/
-      aiworker/
+    infrastructure/database/
+    infrastructure/ratelimit/
     service/
     transport/http/
   migrations/
 ```
 
-### `cmd/api`
+Архитектурный стиль: Clean Architecture / Hexagonal Architecture.
 
-Точка входа.
+Смысл слоев:
 
-Отвечает за:
+- `domain` - модели, интерфейсы, бизнес-ошибки.
+- `service` - application layer, оркестрация сценариев.
+- `infrastructure` - PostgreSQL и Valkey.
+- `client` - HTTP-клиент к Python.
+- `transport/http` - HTTP handlers, middleware, router.
+- `cmd/api` - сборка приложения.
 
-- загрузку конфигурации;
-- создание JSON logger;
-- подключение к PostgreSQL;
-- подключение к Valkey;
-- создание Python AI client;
-- обертку AI client в concurrency limiter;
-- сборку repository, services, handlers;
-- запуск HTTP-сервера;
-- graceful shutdown.
+### 5.1. Go библиотеки
 
-### `internal/domain`
+Основные зависимости:
 
-Содержит доменные модели и интерфейсы.
+- `github.com/go-chi/chi/v5` - HTTP router.
+- `github.com/jackc/pgx/v5` - PostgreSQL driver и pool.
+- `github.com/redis/go-redis/v9` - клиент Valkey/Redis.
+- `github.com/avast/retry-go/v4` - retry генерации и валидации.
+- `github.com/google/uuid` - UUID.
+- `log/slog` - структурные логи.
+
+### 5.2. Конфигурация core
+
+Основные переменные:
+
+```text
+HTTP_ADDR=:8080
+DATABASE_URL=postgres://postgres:hackpassword@postgres:5432/variants_db?sslmode=disable
+VALKEY_ADDR=valkey:6379
+AI_WORKER_BASE_URL=http://analyze:8000
+AI_WORKER_CONCURRENCY=1
+RATE_LIMIT_CAPACITY=30
+RATE_LIMIT_REFILL=30
+RATE_LIMIT_WINDOW=1m
+DEFAULT_VARIANT_COUNT=2
+MAX_UPLOAD_MB=32
+```
+
+`AI_WORKER_CONCURRENCY=1` нужен, чтобы не перегружать GigaChat параллельными запросами. Это важное решение: Go может ставить генерации в очередь, но фактические AI-вызовы идут через ограниченный пул.
+
+### 5.3. Domain models
 
 Основные модели:
 
 - `Task` - исходная работа.
-- `TaskItem` - атомарный пункт исходной работы.
-- `Variant` - один полный вариант работы.
-- `VariantItem` - сгенерированный пункт внутри варианта.
-- `VariantItemHistory` - история ручных правок и перегенераций.
-- `UploadedFile` - файл, пришедший из multipart.
+- `TaskItem` - отдельное исходное задание.
+- `Variant` - полный вариант работы.
+- `VariantItem` - сгенерированное задание внутри варианта.
+- `VariantItemHistory` - история правок и перегенераций.
+- `UploadedFile` - файл из multipart.
 
-Статусы задачи:
+Статусы `Task`:
 
-- `pending`
-- `processing`
-- `done`
-- `failed`
+```text
+pending
+processing
+done
+failed
+```
 
-Статусы пункта варианта:
+Статусы `VariantItem`:
 
-- `ready`
-- `failed`
+```text
+ready
+failed
+```
 
-`failed` нужен, чтобы падение одного пункта не ломало всю работу. Такой пункт остается в варианте как пустой слот с `error_message`, и пользователь может перегенерировать его вручную.
+`failed` у `VariantItem` нужен для устойчивости: если одно задание не сгенерировалось, остальные варианты не теряются. Учитель видит проблемный пункт и может перегенерировать его вручную.
 
-Основные интерфейсы:
+### 5.4. Repository interface
 
-- `Repository`
-- `AIClient`
-- `RateLimiter`
+Интерфейс `Repository` содержит операции:
 
-### `internal/infrastructure/database`
+- `CreateTask`;
+- `UpdateTaskAnalysis`;
+- `UpdateTaskStatus`;
+- `GetTask`;
+- `GetTaskWithDetails`;
+- `ListTasks`;
+- `DeleteTask`;
+- `SaveVariants`;
+- `GetVariantItemForRegeneration`;
+- `UpdateTaskItem`;
+- `UpdateVariantItem`.
 
-Реализация `Repository` через `pgx`.
+Все операции, работающие с пользовательскими данными, фильтруются по `user_id`.
 
-Что реализовано:
+### 5.5. PostgreSQL repository
 
-- создание задачи;
-- сохранение результата анализа;
-- обновление статуса задачи;
-- получение задачи с деталями;
-- список задач с фильтрами;
-- сохранение вариантов;
-- получение пункта для перегенерации;
-- обновление пункта варианта;
-- история изменений пункта.
+Реализация находится в:
 
-Важное требование безопасности: SQL-запросы на пользовательские данные фильтруются по `user_id`. Например, получение задачи идет через `WHERE id = $1 AND user_id = $2`.
+```text
+core/internal/infrastructure/database/postgres.go
+```
 
-### `internal/infrastructure/ratelimit`
+Важные детали:
 
-Реализован token bucket в Valkey через Lua script.
+- используется `pgxpool`;
+- `CreateTask` создает пользователя-заглушку, если его еще нет;
+- `UpdateTaskAnalysis` обновляет `tasks` и пересоздает `task_items`;
+- `SaveVariants` удаляет старые варианты задачи и сохраняет новые;
+- `UpdateVariantItem` пишет запись в `variant_item_history`;
+- `DeleteTask` удаляет задачу только по `id` и `user_id`.
+
+Удаление задачи безопасно завязано на `ON DELETE CASCADE`: при удалении `tasks` удаляются связанные `task_items`, `variants`, `variant_items` и история.
+
+### 5.6. Rate limiter
+
+Реализация:
+
+```text
+core/internal/infrastructure/ratelimit/valkey.go
+```
+
+Алгоритм: token bucket на Valkey/Redis через Lua script.
 
 Ключ:
 
@@ -233,82 +410,142 @@ rate_limit:user:<user_id>
 
 По умолчанию:
 
-- capacity: `30`
-- refill: `30`
-- window: `1m`
+```text
+capacity: 30
+refill:   30
+window:   1m
+```
 
-Если лимит исчерпан, HTTP middleware возвращает `429 Too Many Requests`.
+Если лимит исчерпан, middleware возвращает:
 
-### `internal/client/aiworker`
+```http
+429 Too Many Requests
+```
 
-HTTP-клиент к Python-сервису.
+### 5.7. AI worker client
 
-Ручки Python, которые использует core:
+Реализация:
 
-- `POST /analyze`
-- `POST /generate`
-- `POST /validate`
-- `POST /export`
+```text
+core/internal/client/aiworker/python_client.go
+core/internal/client/aiworker/limited_client.go
+```
 
-Также есть `LimitedClient`, который ограничивает параллельные AI-операции. Сейчас `Analyze`, `Generate`, `Validate` проходят через общий permit. `Export` специально не занимает permit, потому что DOCX-экспорт не обращается к GigaChat и не должен ждать LLM-очередь.
+Core вызывает Python:
 
-### `internal/service`
+```text
+POST /analyze
+POST /generate
+POST /validate
+POST /export
+```
 
-Application layer.
+`LimitedClient` ограничивает параллельные AI-операции через semaphore. Это нужно, потому что GigaChat может иметь жесткий лимит одновременных запросов.
 
-`Orchestrator`:
+Экспорт не занимает AI permit, потому что сборка DOCX/PDF не обращается к LLM.
 
-- принимает создание задачи;
-- сохраняет задачу в `processing`;
-- асинхронно запускает анализ;
-- сохраняет `original_text` и `task_items`;
-- запускает генерацию вариантов;
-- сохраняет варианты;
-- переводит задачу в `done` или `failed`.
+### 5.8. Orchestrator
 
-Генерация использует fan-out / fan-in с межвариантным контекстом:
+Реализация:
 
-1. Для каждого `task_item` создается отдельный worker.
-2. Внутри одного `task_item` варианты генерируются последовательно: сначала вариант 1, затем вариант 2, затем вариант 3.
-3. После успешной генерации текст варианта добавляется в локальный список `previous_variants`.
-4. Следующие варианты этого же `task_item` получают `previous_variants` в `/generate` и `/validate`.
-5. Внутри генерации используется retry до 3 попыток.
-6. Каждая попытка делает `Generate`, затем `Validate`.
-7. Если `Validate=false`, попытка считается неуспешной и запускается новая генерация.
-8. Если все 3 попытки провалились, создается `VariantItem` со статусом `failed`.
-9. Остальные пункты продолжают генерироваться.
+```text
+core/internal/service/orchestrator.go
+```
 
-`TaskService`:
+Основной сценарий:
+
+1. `StartGeneration` создает `Task` со статусом `processing`.
+2. Запускает `runGeneration` в goroutine.
+3. `runGeneration` вызывает Python `/analyze`.
+4. Сохраняет анализ.
+5. Запускает генерацию вариантов.
+6. Сохраняет варианты.
+7. Переводит задачу в `done` или `failed`.
+
+Ограничение по времени:
+
+```text
+maxRuntime = 30 minutes
+```
+
+Fan-out / fan-in:
+
+- количество workers равно количеству исходных `TaskItem`;
+- каждый worker отвечает за один исходный пункт;
+- варианты внутри одного пункта генерируются последовательно;
+- результаты собираются через channel;
+- ошибки отдельных пунктов превращаются в `VariantItem(status=failed)`.
+
+Retry:
+
+```text
+attempts: 3
+delay: 500ms
+delay type: backoff
+```
+
+### 5.9. TaskService
+
+Реализация:
+
+```text
+core/internal/service/task_service.go
+```
+
+Отвечает за:
 
 - получение задачи;
 - список задач;
-- ручное редактирование `VariantItem`;
-- точечная перегенерация `VariantItem`;
-- экспорт задачи.
+- удаление задачи;
+- ручное редактирование исходного пункта;
+- ручное редактирование сгенерированного пункта;
+- точечную перегенерацию пункта;
+- экспорт.
 
-### `internal/transport/http`
+При перегенерации отдельного пункта сервис:
 
-HTTP delivery layer.
+1. Находит `Task`, `TaskItem`, `VariantItem`.
+2. Собирает `previous_variants` для этого же исходного пункта.
+3. Вызывает `/generate`.
+4. Вызывает `/validate`.
+5. Делает до 3 попыток.
+6. При успехе обновляет `variant_items`.
+7. Пишет историю изменения.
 
-Реализовано:
+### 5.10. HTTP API core
 
-- `GET /healthz`
-- `GET /api/v1/tasks`
-- `POST /api/v1/tasks`
-- `GET /api/v1/tasks/{id}`
-- `GET /api/v1/tasks/{id}/export`
-- `PATCH /api/v1/variants/{id}/items/{item_id}`
-- `POST /api/v1/variants/{id}/items/{item_id}/regenerate`
+Реализация:
 
-Все `/api/v1/*` требуют заголовок:
+```text
+core/internal/transport/http/router.go
+core/internal/transport/http/handlers.go
+```
+
+Ручки:
+
+```text
+GET    /healthz
+GET    /api/v1/tasks
+POST   /api/v1/tasks
+GET    /api/v1/tasks/{id}
+DELETE /api/v1/tasks/{id}
+GET    /api/v1/tasks/{id}/export
+PATCH  /api/v1/tasks/{id}/items/{item_id}
+PATCH  /api/v1/variants/{id}/items/{item_id}
+POST   /api/v1/variants/{id}/items/{item_id}/regenerate
+```
+
+Все `/api/v1/*` требуют:
 
 ```text
 X-User-ID: <uuid>
 ```
 
-## Архитектура Python analyze
+Сейчас это dev-механизм идентификации пользователя, полноценной авторизации пока нет.
 
-Структура:
+## 6. Python analyze
+
+Путь:
 
 ```text
 analyze/
@@ -320,251 +557,726 @@ analyze/
     parsing/
 ```
 
-### HTTP API
+Python-сервис отвечает за:
 
-Реализованы ручки:
+- парсинг файлов;
+- OCR;
+- работу с GigaChat;
+- анализ исходника на атомарные задания;
+- генерацию вариантов;
+- валидацию вариантов;
+- экспорт DOCX/PDF.
 
-- `GET /healthz`
-- `POST /parse`
-- `POST /analyze`
-- `POST /generate`
-- `POST /validate`
-- `POST /export`
+### 6.1. Python библиотеки
 
-### `/parse`
+Основные зависимости из `requirements.txt`:
 
-Принимает один файл и возвращает:
+- `fastapi` - HTTP API.
+- `uvicorn[standard]` - ASGI server.
+- `python-multipart` - multipart form-data.
+- `gigachat` - официальный клиент GigaChat.
+- `python-dotenv` - загрузка `.env`.
+- `json-repair` - восстановление некорректного JSON от LLM.
+- `pymupdf` - работа с PDF и рендер страниц.
+- `pdfplumber` - извлечение текстового слоя из PDF.
+- `python-docx` - чтение и генерация DOCX.
+- `python-pptx` - чтение PPTX.
+- `pillow` - изображения.
+- `pytesseract` - OCR через Tesseract.
+- `latex2mathml` - конвертация LaTeX в MathML.
+- `mathml2omml` - конвертация MathML в Office Math для DOCX.
+- `reportlab` - PDF-экспорт.
+- `matplotlib` - рендер формул в картинки для PDF.
+- `httpx`, `pydantic-settings` - вспомогательные зависимости.
 
-- `raw_text`
-- `normalized_text`
+В Dockerfile для `analyze` дополнительно устанавливаются:
 
-Используется для проверки парсинга.
+- `tesseract-ocr`;
+- `tesseract-ocr-rus`;
+- `tesseract-ocr-eng`;
+- `libwmf-bin`;
+- `fonts-dejavu-core`;
+- системные сертификаты и шрифты.
 
-### `/analyze`
+### 6.2. Конфигурация analyze
 
-Принимает:
-
-- `files` - массив файлов multipart.
-- `text` - необязательный текст.
-- `title` - название работы.
-- `settings` - JSON-строка настроек.
-- `user_id` - строка.
-
-Логика:
-
-1. Каждый файл парсится в текст.
-2. Все тексты склеиваются в один `original_text`.
-3. Дополнительное поле `text` также добавляется в общий текст.
-4. Текст нормализуется.
-5. `original_text`, `title`, `settings` отправляются в GigaChat.
-6. GigaChat должен вернуть JSON с предметом, темой, типом, сложностью и списком атомарных заданий.
-7. Ответ приводится к `AnalyzeResponse`.
-
-### `/generate`
-
-Принимает одно исходное атомарное задание, настройки и межвариантный контекст.
-
-Ключевые поля:
-
-- `source_content` - исходный пункт задания.
-- `variant_number` - номер генерируемого варианта.
-- `settings` - настройки мультипликации.
-- `previous_variants` - уже созданные тексты вариантов для этого же `task_item`.
-
-Возвращает:
-
-```json
-{
-  "content": "..."
-}
-```
-
-Сейчас генерация идет через GigaChat. Prompt учитывает настройки мультипликации, номер варианта и `previous_variants`. Python добавляет negative prompt: новый вариант не должен повторять уже созданные числовые значения, имена, объекты и формулировки, если их можно изменить без потери смысла.
-
-### `/validate`
-
-Принимает:
-
-- `original`
-- `generated`
-- `settings`
-- `previous_variants`
-
-Возвращает:
-
-```json
-{
-  "valid": true
-}
-```
-
-Валидация также идет через GigaChat. Она проверяет, можно ли считать `generated` корректным вариантом `original`.
-
-Перед вызовом GigaChat Python делает быструю проверку дублей: полный текст после нормализации, тестовый вопрос с тем же набором вариантов ответа даже при перестановке `а/б/в/г`, а также почти одинаковый набор токенов. Если дубль найден, `/validate` сразу возвращает `false`. Если дубля нет, `previous_variants` дополнительно передаются в prompt валидатора.
-
-### `/export`
-
-Принимает полный JSON задачи из core и возвращает DOCX.
-
-DOCX сейчас содержит:
-
-- заголовок;
-- метаданные;
-- исходные пункты;
-- все варианты;
-- пометки по `failed`-пунктам.
-
-Экспорт реализован в:
+Основные переменные:
 
 ```text
-analyze/services/export/docx_exporter.py
+GIGACHAT_CREDENTIALS
+GIGACHAT_AUTHORIZATION_KEY
+GIGACHAT_CLIENT_ID
+GIGACHAT_CLIENT_SECRET
+GIGACHAT_SCOPE=GIGACHAT_API_PERS
+GIGACHAT_MODEL=GigaChat
+GIGACHAT_VISION_MODEL
+GIGACHAT_TIMEOUT=60.0
+GIGACHAT_VERIFY_SSL_CERTS=false
+GIGACHAT_CONCURRENCY=1
+
+TESSERACT_OCR_ENABLED=true
+TESSERACT_LANG=rus+eng
+TESSERACT_PSM=6
+TESSERACT_MIN_CHARS=25
+TESSERACT_MIN_CONFIDENCE=65
+
+PDF_MATH_OCR_ENABLED=true
+PDF_TESSERACT_OCR_ENABLED=true
+PDF_MATH_OCR_DPI=220
 ```
 
-Формат ответа:
+Секреты GigaChat нельзя коммитить в репозиторий.
 
-- `Content-Type: application/vnd.openxmlformats-officedocument.wordprocessingml.document`
-- `Content-Disposition` с ASCII `filename` и UTF-8 `filename*`
-- бинарное содержимое `.docx`
+Поддерживаемые способы авторизации GigaChat:
 
-## Поддерживаемые входные файлы
+1. `GIGACHAT_CREDENTIALS`.
+2. `GIGACHAT_AUTHORIZATION_KEY`.
+3. `GIGACHAT_CLIENT_SECRET`, если там уже лежит готовый Authorization Key.
+4. `GIGACHAT_CLIENT_ID + GIGACHAT_CLIENT_SECRET`, тогда сервис сам собирает base64 от `client_id:client_secret`.
 
-Сейчас `analyze` умеет определять и парсить:
+Access token кешируется в памяти и обновляется до истечения срока.
 
-- `.pdf`
-- `.docx`
-- `.pptx`
-- `.png`
-- `.jpg`
-- `.jpeg`
-- `.txt`
+### 6.3. HTTP API analyze
+
+Ручки:
+
+```text
+GET  /healthz
+POST /parse
+POST /analyze
+POST /generate
+POST /validate
+POST /export
+```
+
+`/parse` - техническая ручка для проверки парсинга одного файла.
+
+`/analyze` - основная ручка анализа исходной работы.
+
+`/generate` - генерация одного варианта одного пункта.
+
+`/validate` - проверка качества сгенерированного пункта.
+
+`/export` - сборка DOCX/PDF.
+
+## 7. Поддерживаемые форматы файлов
+
+На текущий момент поддерживаются:
+
+```text
+.pdf
+.docx
+.pptx
+.txt
+.png
+.jpg
+.jpeg
+```
 
 Определение типа идет по:
 
 - имени файла;
 - `Content-Type`;
 - magic bytes;
-- признаку DOCX как ZIP с `word/document.xml`;
-- признаку PPTX как ZIP с `ppt/presentation.xml`;
-- признакам изображения.
+- структуре ZIP для DOCX/PPTX;
+- `imghdr` для изображений;
+- попытке декодировать как текст.
 
-Особенности:
+## 8. Как парсятся файлы
 
-- DOCX читается не только через `python-docx`, но и через XML, чтобы не терять Word Math / Office Math формулы.
-- PPTX читается через `python-pptx` и XML слайдов; текст, таблицы и часть Office Math формул извлекаются в общий текст, изображения внутри слайдов идут через OCR.
-- PDF читается через Python PDF-библиотеки; качество зависит от того, есть ли в PDF текстовый слой.
-- Изображения идут через GigaChat vision OCR.
-- TXT декодируется через отдельный parser с поддержкой `utf-8`, `utf-8-sig`, `cp1251`, `koi8-r` и `latin-1`.
-- Несколько файлов в одной работе поддерживаются через одно multipart-поле `files`.
+Общий вход:
 
-## База данных
+```text
+analyze/services/parsing/extraction.py
+```
 
-Миграции находятся в:
+`FileExtractionService` определяет тип файла и вызывает нужный parser:
+
+- `PDFParser`;
+- `DOCXParser`;
+- `PPTXParser`;
+- `TXTParser`;
+- `ImageParser`.
+
+### 8.1. TXT
+
+TXT parser пробует декодировки:
+
+- `utf-8`;
+- `utf-8-sig`;
+- `cp1251`;
+- `koi8-r`;
+- `latin-1`.
+
+После декодирования текст нормализуется.
+
+### 8.2. DOCX
+
+Реализация:
+
+```text
+analyze/services/parsing/docx_parser.py
+```
+
+Используются:
+
+- `python-docx`;
+- прямое чтение `word/document.xml` через `zipfile` и `ElementTree`;
+- собственный парсер Office Math;
+- OCR изображений внутри документа.
+
+Почему не только `python-docx`: обычный `python-docx` плохо сохраняет формулы Word Math. Поэтому сервис читает XML документа напрямую.
+
+Что извлекается:
+
+- абзацы;
+- таблицы;
+- переносы строк;
+- изображения;
+- Office Math / OMML формулы.
+
+Формулы Word Math конвертируются в LaTeX-подобный текст и оборачиваются в `$...$`. Это нужно, чтобы фронтенд мог отрисовать формулы через KaTeX, а экспорт мог собрать их обратно в DOCX/PDF.
+
+Изображения внутри DOCX:
+
+1. Извлекаются из relationships документа.
+2. Проверяются на WMF.
+3. Если это WMF, пробуется `libwmf`.
+4. Иначе изображение готовится через Pillow.
+5. Для не математических предметов сначала пробуется Tesseract.
+6. Если Tesseract не принят или предмет математический, используется GigaChat Vision.
+
+### 8.3. PPTX
+
+Реализация:
+
+```text
+analyze/services/parsing/pptx_parser.py
+```
+
+Используются:
+
+- `python-pptx`;
+- прямое чтение XML слайдов;
+- `zipfile`;
+- `ElementTree`;
+- OCR изображений.
+
+Что извлекается:
+
+- текстовые блоки на слайдах;
+- таблицы;
+- Office Math из XML;
+- изображения через OCR.
+
+Слайды читаются по порядку: `slide1.xml`, `slide2.xml`, и так далее.
+
+### 8.4. PDF
+
+Реализация:
+
+```text
+analyze/services/parsing/pdf_parser.py
+```
+
+Используются:
+
+- `PyMuPDF` (`fitz`) для открытия PDF, рендера страниц и извлечения изображений;
+- `pdfplumber` для текстового слоя;
+- Tesseract для OCR;
+- GigaChat Vision для math OCR;
+- Pillow для подготовки изображений.
+
+PDF сейчас обрабатывается постранично.
+
+Алгоритм для каждой страницы:
+
+1. Если `PDF_MATH_OCR_ENABLED=true`, страница рендерится в PNG и отправляется в GigaChat Vision с math prompt.
+2. Если math OCR не вернул текст, пробуется текстовый слой через `pdfplumber`.
+3. Если `pdfplumber` не помог, пробуется извлечение слов через PyMuPDF.
+4. Если текст все еще пустой и `PDF_TESSERACT_OCR_ENABLED=true`, страница рендерится и отправляется в Tesseract.
+5. Если текст получен, он добавляется в общий результат с разделителем:
+
+```text
+--- Страница 1 ---
+...
+```
+
+6. Если страница не была полностью распознана через math OCR, отдельно извлекаются встроенные изображения и тоже отправляются в OCR.
+
+Это важно: раньше при успешном OCR хотя бы одной страницы parser мог вернуть только этот текст. Сейчас PDF собирается постранично, поэтому многостраничные документы не должны обрезаться до первого листа.
+
+Ограничение PDF: если PDF является сканом плохого качества, качество зависит от OCR. Для математических PDF используется GigaChat Vision, потому что Tesseract плохо распознает формулы.
+
+### 8.5. PNG/JPG/JPEG
+
+Реализация:
+
+```text
+analyze/services/parsing/image_parser.py
+```
+
+Алгоритм:
+
+1. Проверка WMF, если применимо.
+2. Подготовка изображения через Pillow:
+   - учет EXIF orientation;
+   - перевод в grayscale;
+   - увеличение маленьких изображений;
+   - autocontrast.
+3. Для обычных предметов сначала Tesseract.
+4. Для математики, физики, химии, информатики Tesseract пропускается и используется GigaChat Vision с math prompt.
+5. Если Tesseract дал мало текста или низкую confidence, используется GigaChat Vision.
+
+Математические предметы:
+
+```text
+математика
+физика
+химия
+информатика
+```
+
+Для них Tesseract не считается надежным основным OCR, потому что он плохо понимает формулы.
+
+### 8.6. Нормализация текста
+
+После парсинга используется `TextNormalizer`.
+
+Задачи нормализации:
+
+- убрать лишние пробелы;
+- нормализовать переносы строк;
+- убрать мусорные символы;
+- привести текст к виду, пригодному для LLM;
+- сохранить структуру списков, таблиц и вариантов ответа насколько возможно.
+
+Отдельно есть `normalize_math_markup`, который приводит формулы к формату `$...$` и чистит некорректные долларовые маркеры.
+
+## 9. GigaChat и prompt pipeline
+
+Реализация:
+
+```text
+analyze/services/llm/client.py
+analyze/services/llm/prompts/
+```
+
+Используется официальный Python-клиент `gigachat`.
+
+### 9.1. Analyze prompt
+
+Задача analyze prompt:
+
+- получить общий `original_text`;
+- разбить его на решаемые задания;
+- не включать титульные листы, критерии, таблицы баллов и служебные инструкции;
+- сохранить порядок заданий;
+- вернуть строгий JSON.
+
+JSON schema:
+
+```json
+{
+  "subject": "string",
+  "topic": "string",
+  "task_type": "problem|test|exercise|question|task",
+  "difficulty": "easy|medium|hard",
+  "items": [
+    {
+      "order": 1,
+      "context": "string",
+      "content": "string"
+    }
+  ]
+}
+```
+
+Если GigaChat возвращает слегка битый JSON, используется `json-repair`.
+
+### 9.2. Subject prompts
+
+Есть предметные подсказки:
+
+```text
+analyze/services/llm/prompts/subject_prompts.py
+```
+
+Они дают LLM дополнительные правила для конкретного предмета. Например, для математики важно сохранять тип выражения, для русского языка - не терять пропуски букв и структуру задания.
+
+### 9.3. Generate prompt
+
+Реализация:
+
+```text
+analyze/services/llm/prompts/generation_prompts.py
+```
+
+На вход:
+
+- исходное задание;
+- номер варианта;
+- настройки генерации;
+- предметный профиль;
+- уже созданные варианты этого же задания;
+- пользовательский prompt для точечной перегенерации, если он есть.
+
+Перед сборкой prompt текст из WYSIWYG-редактора проходит отдельную безопасную нормализацию: HTML-теги превращаются в читаемый текст, абзацы и списки сохраняются переносами, таблицы - строками с разделителями, формулы остаются в виде `$...$`. При этом исходный HTML не меняется в БД и может использоваться экспортом.
+
+Prompt использует few-shot examples и строгие правила:
+
+- сохранить структуру исходника;
+- не менять дидактическую цель;
+- не добавлять решение;
+- не менять формат ответа;
+- не повторять предыдущие варианты;
+- вернуть JSON с ключом `content`.
+
+Температура генерации сейчас выше нуля (`0.45`), чтобы варианты не были одинаковыми.
+
+### 9.4. Validate prompt
+
+Validate проверяет:
+
+- сохранен ли формат;
+- не изменилась ли сложность;
+- выполнены ли настройки генерации;
+- нет ли повторов с предыдущими вариантами;
+- не добавлено ли решение вместо задания.
+
+Перед LLM-валидацией есть быстрые локальные проверки дублей:
+
+- полное совпадение нормализованного текста;
+- совпадение ключа без пробелов и пунктуации;
+- совпадение структуры multiple choice;
+- высокая token similarity.
+
+Если локальная проверка нашла дубль, `/validate` сразу возвращает `false` без расхода токенов на GigaChat.
+
+## 10. Формулы
+
+Формулы проходят через несколько этапов.
+
+### 10.1. Импорт формул
+
+DOCX/PPTX:
+
+- Office Math читается из XML;
+- OMML конвертируется в LaTeX-подобную строку;
+- формула сохраняется в тексте как `$...$`.
+
+PDF/images:
+
+- для математических материалов используется GigaChat Vision;
+- prompt требует вернуть формулы в LaTeX внутри `$...$`;
+- Tesseract для математических предметов не используется как основной OCR.
+
+### 10.2. Отображение формул на фронтенде
+
+Frontend использует:
+
+- `KaTeX` для отрисовки формул;
+- `MathLive` для визуального ввода формул;
+- TipTap custom node `mathFormula`.
+
+Если текст содержит `$x^2+1$`, фронтенд превращает это в визуальный формульный блок.
+
+Кнопка `Σ` в редакторе:
+
+- вставляет пустую формулу в место курсора;
+- открывает редактор формулы;
+- позволяет вводить формулу через MathLive;
+- дает быстрые кнопки: дробь, степень, корень, индекс;
+- сохраняет формулу обратно как `$...$`.
+
+### 10.3. Экспорт формул в DOCX
+
+DOCX exporter:
+
+1. Ищет сегменты `$...$`.
+2. Пытается конвертировать LaTeX в MathML через `latex2mathml`.
+3. Конвертирует MathML в OMML через `mathml2omml`.
+4. Вставляет OMML в DOCX как настоящую формулу Word.
+5. Если конвертация не удалась, делает fallback в Cambria Math runs.
+
+Это не идеально для всех формул, но базовые дроби, степени, корни, индексы и операторы поддерживаются.
+
+### 10.4. Экспорт формул в PDF
+
+PDF exporter:
+
+1. Ищет `$...$`.
+2. Рендерит формулу через `matplotlib.mathtext` в PNG.
+3. Встраивает PNG как inline image в ReportLab paragraph.
+4. Если рендер не удался, вставляет текстовый fallback.
+
+PDF также чистит мусорные маркеры вроде `$$` и `$.$`.
+
+## 11. Экспорт
+
+Реализация:
+
+```text
+analyze/services/export/docx_exporter.py
+analyze/services/export/pdf_exporter.py
+```
+
+Поддерживаются:
+
+```text
+DOCX
+PDF
+```
+
+Экспорт может быть:
+
+- всех вариантов;
+- выбранных вариантов.
+
+Примеры:
+
+```http
+GET /api/v1/tasks/{id}/export?format=docx
+GET /api/v1/tasks/{id}/export?format=pdf
+GET /api/v1/tasks/{id}/export?format=docx&variants=1,2
+```
+
+DOCX:
+
+- создается через `python-docx`;
+- поддерживает текст;
+- базовый HTML из редактора;
+- списки;
+- таблицы;
+- формулы через OMML/fallback.
+
+PDF:
+
+- создается через `reportlab`;
+- использует DejaVu fonts для кириллицы;
+- формулы рендерятся через `matplotlib.mathtext`;
+- базовые HTML-правки из редактора сохраняются как переносы, жирный/курсив/подчеркивание, списки и упрощенные таблицы;
+- подходит для быстрой печати.
+
+Ограничение PDF: сложные таблицы и нестандартный HTML все равно упрощаются. DOCX лучше подходит для дальнейшего редактирования.
+
+## 12. База данных
+
+Миграции:
 
 ```text
 core/migrations/
+  000001_init_schema.up.sql
+  000002_variant_item_status.up.sql
 ```
 
-Текущие таблицы:
+Таблицы:
 
-- `users`
-- `tasks`
-- `task_items`
-- `variants`
-- `variant_items`
-- `variant_item_history`
+```text
+users
+tasks
+task_items
+variants
+variant_items
+variant_item_history
+```
 
-### `tasks`
+### 12.1. users
 
-Хранит исходную работу:
+Минимальная таблица пользователей:
 
-- `user_id`
-- `title`
-- `subject`
-- `topic`
-- `task_type`
-- `difficulty`
-- `original_text`
-- `settings`
-- `status`
-- `error_message`
+- `id`;
+- `email`;
+- `created_at`.
 
-### `task_items`
+Сейчас пользователь создается автоматически по `X-User-ID`, полноценной регистрации нет.
 
-Хранит атомарные исходные пункты:
+### 12.2. tasks
 
-- `task_id`
-- `item_order`
-- `context`
-- `content`
+Хранит одну исходную работу:
 
-### `variants`
+- `id`;
+- `user_id`;
+- `title`;
+- `subject`;
+- `topic`;
+- `task_type`;
+- `difficulty`;
+- `original_text`;
+- `settings`;
+- `status`;
+- `error_message`;
+- `created_at`;
+- `updated_at`.
+
+### 12.3. task_items
+
+Хранит атомарные задания исходника:
+
+- `id`;
+- `task_id`;
+- `item_order`;
+- `context`;
+- `content`;
+- `created_at`.
+
+### 12.4. variants
 
 Хранит варианты:
 
-- `task_id`
-- `variant_number`
+- `id`;
+- `task_id`;
+- `variant_number`;
+- `created_at`.
 
-### `variant_items`
+### 12.5. variant_items
 
 Хранит сгенерированные пункты:
 
-- `variant_id`
-- `task_item_id`
-- `content`
-- `status`
-- `error_message`
-- `is_edited`
+- `id`;
+- `variant_id`;
+- `task_item_id`;
+- `content`;
+- `status`;
+- `error_message`;
+- `is_edited`;
+- `created_at`;
+- `updated_at`.
 
-`status` и `error_message` добавлены отдельной миграцией, чтобы не терять пункт, если генерация конкретного задания упала.
-
-### `variant_item_history`
+### 12.6. variant_item_history
 
 Хранит историю изменений:
 
-- старый текст;
-- новый текст;
-- источник изменения: `manual_edit` или `regenerate`.
+- `variant_item_id`;
+- `old_content`;
+- `new_content`;
+- `change_source`;
+- `created_at`.
 
-## Frontend
+`change_source`:
 
-Основной frontend находится в:
+```text
+manual_edit
+regenerate
+```
+
+## 13. Frontend
+
+Путь:
 
 ```text
 variant-generator/
 ```
 
-Реализовано:
+### 13.1. Frontend библиотеки
 
-- загрузка файлов через drag-and-drop;
-- передача нескольких файлов в поле `files`;
-- передача настроек генерации;
-- создание задачи;
-- страница библиотеки `/library` с историей запросов;
+Основные зависимости:
+
+- `React 19`;
+- `Vite`;
+- `TypeScript`;
+- `TanStack Query`;
+- `React Router`;
+- `React Dropzone`;
+- `TipTap`;
+- `KaTeX`;
+- `MathLive`;
+- `Tailwind CSS`;
+- `Lucide React`.
+
+### 13.2. Основные страницы
+
+```text
+/
+/upload?subject=...
+/workspace/:id
+/library
+```
+
+Главная:
+
+- название продукта;
+- краткий сценарий;
+- кнопка загрузки;
+- выбор предмета;
+- кнопка `Как пользоваться`;
+- переход в библиотеку.
+
+Upload:
+
+- название работы;
+- drag-and-drop файлов;
+- количество вариантов;
+- настройки генерации.
+
+Workspace:
+
+- пошаговая проверка исходника;
+- проверка вариантов;
+- экспорт.
+
+Library:
+
+- история запросов;
+- поиск;
+- фильтр по статусу;
+- открытие работы;
+- удаление работы.
+
+### 13.3. Редактор
+
+Редактор построен на TipTap.
+
+Возможности:
+
+- жирный/курсив/подчеркивание/зачеркивание;
+- заголовки;
+- списки;
+- таблицы;
+- вставка формулы;
+- предпросмотр;
+- сохранение.
+
+Формула хранится как `$...$`, но для учителя отображается визуально.
+
+### 13.4. Работа с исходником
+
+На этапе проверки исходника пользователь может исправить распознанное задание. После сохранения фронтенд автоматически запускает перегенерацию связанных вариантов этого задания.
+
+Почему так сделано: если исходник был неправильный, ручная кнопка перегенерации на странице исходника сбивала с толку. Теперь логика проще: исправил исходник - варианты обновились.
+
+### 13.5. Работа с вариантами
+
+Для каждого сгенерированного пункта:
+
+- можно открыть редактор;
+- можно сохранить ручную правку;
+- можно перегенерировать только этот пункт;
+- можно передать пользовательское пожелание, например: "сделай числа проще" или "замени исторический пример".
+
+### 13.6. Библиотека
+
+Библиотека показывает работы текущего пользователя.
+
+Возможности:
+
+- список работ;
+- счетчики: всего, готово, в работе, ошибки;
 - поиск по названию и исходному тексту;
-- фильтр истории по статусу;
-- polling статуса задачи;
-- просмотр исходных пунктов;
-- просмотр вариантов;
-- inline-редактирование пункта;
-- точечная перегенерация пункта;
-- отображение `failed`-пунктов;
-- скачивание DOCX.
+- фильтр по статусу;
+- обновление списка;
+- открытие работы;
+- удаление работы с подтверждением.
 
-Важные frontend-типы находятся в:
+Удаление вызывает:
 
-```text
-variant-generator/src/shared/types/domain.ts
+```http
+DELETE /api/v1/tasks/{id}
 ```
 
-API-клиенты:
+## 14. Основные API-контракты
 
-```text
-variant-generator/src/shared/api/
-```
-
-## Основные контракты
-
-### Создание задачи
+### 14.1. Создать задачу
 
 ```http
 POST /api/v1/tasks
@@ -574,27 +1286,128 @@ Content-Type: multipart/form-data
 
 Поля:
 
-- `title`
-- `variant_count`
-- `settings`
-- `files`
-- `text`
-
-`files` можно передавать несколько раз:
-
-```bash
--F "files=@page1.jpg"
--F "files=@page2.jpg"
--F "files=@page3.jpg"
+```text
+title: string
+subject: string
+settings: JSON string
+variant_count: integer
+files: File[]
+text: string, optional
 ```
 
-Также поддерживается поле `files[]`.
+Ответ:
 
-### Настройки генерации
+```http
+202 Accepted
+```
 
-`settings` передается как JSON-строка.
+```json
+{
+  "id": "...",
+  "status": "processing"
+}
+```
 
-Текущая структура на фронте:
+### 14.2. Получить список задач
+
+```http
+GET /api/v1/tasks?q=&subject=&topic=&status=&limit=100&offset=0
+X-User-ID: <uuid>
+```
+
+Ответ:
+
+```json
+{
+  "items": []
+}
+```
+
+### 14.3. Получить задачу
+
+```http
+GET /api/v1/tasks/{id}
+X-User-ID: <uuid>
+```
+
+Возвращает `Task` вместе с `task_items` и `variants`.
+
+### 14.4. Удалить задачу
+
+```http
+DELETE /api/v1/tasks/{id}
+X-User-ID: <uuid>
+```
+
+Ответ:
+
+```http
+204 No Content
+```
+
+### 14.5. Редактировать исходный пункт
+
+```http
+PATCH /api/v1/tasks/{task_id}/items/{item_id}
+X-User-ID: <uuid>
+Content-Type: application/json
+```
+
+Body:
+
+```json
+{
+  "content": "Новый текст исходного задания",
+  "context": "Общий контекст, если нужен"
+}
+```
+
+### 14.6. Редактировать пункт варианта
+
+```http
+PATCH /api/v1/variants/{variant_id}/items/{variant_item_id}
+X-User-ID: <uuid>
+Content-Type: application/json
+```
+
+Body:
+
+```json
+{
+  "content": "Новый текст задания"
+}
+```
+
+### 14.7. Перегенерировать пункт варианта
+
+```http
+POST /api/v1/variants/{variant_id}/items/{variant_item_id}/regenerate
+X-User-ID: <uuid>
+Content-Type: application/json
+```
+
+Body:
+
+```json
+{
+  "prompt": "Что именно изменить",
+  "custom_prompt": "Альтернативное поле для того же смысла"
+}
+```
+
+### 14.8. Экспорт
+
+```http
+GET /api/v1/tasks/{task_id}/export?format=docx
+GET /api/v1/tasks/{task_id}/export?format=pdf
+GET /api/v1/tasks/{task_id}/export?format=docx&variants=1,3
+```
+
+## 15. Настройки генерации
+
+Frontend отправляет `settings` как JSON-строку.
+
+Текущая структура:
 
 ```ts
 {
@@ -607,177 +1420,254 @@ Content-Type: multipart/form-data
 }
 ```
 
-Примеры `variation_types`:
+Поддерживаемые `variation_types`:
 
-- `replace_numbers`
-- `reorder_enumeration`
-- `synonymize_non_key_wording`
-- `replace_context`
-- `change_names`
-- `change_units`
-- `reorder_steps`
+- `replace_numbers` - менять числа;
+- `reorder_enumeration` - менять порядок перечислений;
+- `synonymize_non_key_wording` - переформулировать неключевой текст;
+- `replace_context` - менять сюжет или контекст;
+- `change_names` - менять имена, названия, обозначения;
+- `change_units` - менять единицы измерения;
+- `reorder_steps` - менять порядок шагов, если это не ломает смысл.
 
-### Получение задачи
+`locked_parts` - список слов или фраз, которые нельзя менять.
 
-```http
-GET /api/v1/tasks/{id}
-X-User-ID: <uuid>
-```
+`preserve_difficulty` - требование сохранять сложность.
 
-Возвращает задачу вместе с `task_items` и `variants`.
+`check_answer_uniqueness` - дополнительный флаг проверки уникальности ответов.
 
-### Ручное редактирование пункта
+## 16. Устойчивость и ошибки
 
-```http
-PATCH /api/v1/variants/{variant_id}/items/{variant_item_id}
-X-User-ID: <uuid>
-Content-Type: application/json
-```
+### 16.1. Ошибка анализа
 
-Body:
+Если `/analyze` не смог распарсить файл, не извлек текст или GigaChat не вернул задания, вся задача становится `failed`.
 
-```json
-{
-  "content": "Новый текст пункта"
-}
-```
+### 16.2. Ошибка отдельного пункта генерации
 
-После ручного редактирования:
+Если конкретный `VariantItem` не прошел генерацию/валидацию за 3 попытки:
 
-- `status` становится `ready`;
-- `error_message` очищается;
-- `is_edited` становится `true`;
-- запись попадает в `variant_item_history`.
+- создается item со статусом `failed`;
+- сохраняется `error_message`;
+- остальные пункты продолжают обрабатываться;
+- задача может завершиться как `done`;
+- пользователь может перегенерировать проблемный пункт вручную.
 
-### Перегенерация пункта
+### 16.3. Rate limit
 
-```http
-POST /api/v1/variants/{variant_id}/items/{variant_item_id}/regenerate
-X-User-ID: <uuid>
-```
-
-Логика:
-
-- core находит исходный `TaskItem`;
-- вызывает Python `/generate`;
-- вызывает Python `/validate`;
-- делает до 3 попыток;
-- при успехе обновляет `VariantItem`;
-- при неуспехе возвращает ошибку, старое состояние пункта сохраняется.
-
-### Экспорт DOCX
-
-```http
-GET /api/v1/tasks/{task_id}/export
-X-User-ID: <uuid>
-```
-
-Core получает задачу из БД, отправляет полный JSON в Python `/export`, получает бинарный DOCX и проксирует его пользователю.
-
-## Поведение при ошибках генерации
-
-Раньше падение одного пункта могло ломать всю генерацию. Сейчас поведение другое:
-
-1. Для каждого пункта есть до 3 попыток `Generate -> Validate`.
-2. Если все попытки провалились, создается `VariantItem` со статусом `failed`.
-3. Остальные пункты продолжают генерироваться.
-4. Задача может завершиться в `done`, даже если часть пунктов `failed`.
-5. В `task.error_message` пишется количество failed-пунктов.
-6. Пользователь видит failed-пункт во фронте и может перегенерировать его отдельно.
-7. В DOCX failed-пункт не пропадает, а выгружается с пометкой.
-
-## Лимиты и устойчивость
-
-### Rate limit пользователей
-
-Каждый `/api/v1/*` запрос проходит через Valkey token bucket.
-
-Если лимит исчерпан:
+Если пользователь превышает лимит запросов:
 
 ```http
 429 Too Many Requests
 ```
 
-### Ограничение GigaChat concurrency
+### 16.4. Ограничение GigaChat concurrency
 
-Из-за текущего бесплатного синхронного доступа к GigaChat система настроена на последовательные AI-вызовы:
+Сейчас рекомендованная конфигурация:
 
-```env
+```text
 AI_WORKER_CONCURRENCY=1
 GIGACHAT_CONCURRENCY=1
 ```
 
-Это не делает fan-out бесполезным полностью: Go по-прежнему строит очередь задач генерации и умеет независимо обрабатывать результаты, но фактические обращения к GigaChat проходят последовательно.
+Это снижает риск ошибок из-за лимита одновременных запросов GigaChat. Асинхронность Go при этом не бесполезна: система все равно ведет независимые задачи, очереди генерации, retry и сбор результатов, но фактические LLM-запросы проходят через контролируемый узкий канал.
 
-### Retry
+## 17. Безопасность и изоляция данных
 
-Retry реализован в Go через `retry-go`.
+Сейчас нет полноценной авторизации. Пользователь определяется заголовком:
 
-Используется:
+```text
+X-User-ID
+```
 
-- в первичной генерации вариантов;
-- в точечной перегенерации.
+Это подходит для MVP/хакатона, но не для production.
 
-Количество попыток сейчас: `3`.
+Что уже сделано:
 
-## Логирование
+- все основные SQL-запросы фильтруются по `user_id`;
+- получение задачи идет через `WHERE id = $1 AND user_id = $2`;
+- удаление задачи идет через `DELETE FROM tasks WHERE id = $1 AND user_id = $2`;
+- редактирование и перегенерация проверяют владение через join с `tasks`;
+- секреты GigaChat читаются из `.env`/переменных окружения и не должны попадать в git.
 
-Core использует `slog` JSON-логи.
+Что нужно для production:
+
+- нормальная авторизация;
+- JWT/session;
+- роли пользователей;
+- хранение файлов, если нужно аудировать оригиналы;
+- аудит действий;
+- HTTPS;
+- ограничение размера и типов файлов на всех уровнях;
+- антивирус/песочница для файлов, если сервис публичный.
+
+## 18. Логирование
+
+Go использует `log/slog`.
 
 Логируются:
 
-- старт приложения;
-- подключение PostgreSQL и Valkey;
-- входящие HTTP-запросы;
+- старт сервиса;
+- HTTP-запросы;
+- user_id;
+- request_id;
+- статусы ответов;
+- длительность запросов;
 - создание задачи;
-- анализ задачи;
-- fan-out / fan-in генерации;
-- вызовы AI worker;
-- rate limit;
-- ручное редактирование;
+- анализ;
+- генерация;
+- retry;
+- failed items;
+- редактирование;
 - перегенерация;
-- экспорт.
+- экспорт;
+- rate limit.
 
-Python сейчас в основном использует стандартные логи FastAPI/Uvicorn. В списке доработок остается добавление более подробных структурных логов в Python.
+Python пока в основном использует стандартные логи FastAPI/Uvicorn и `print` в местах ошибок парсинга/OCR. Это рабочее состояние для хакатона, но структурные JSON-логи в Python остаются хорошей доработкой.
 
-## Что проверено вручную
+## 19. Что уже реализовано
 
-На текущем состоянии проверялись:
+### Backend / core
 
-- `go test ./...` в `core`;
-- `npm run build` во frontend;
-- применение миграций через Docker;
-- запуск `docker compose up -d --build`;
-- реальный DOCX export через core;
-- валидность DOCX как ZIP-архива;
-- то, что `/export` больше не ждет LLM permit.
+- HTTP API на Go.
+- Асинхронное создание задач.
+- Clean/Hexagonal структура.
+- PostgreSQL repository.
+- Valkey rate limiter.
+- Multipart upload нескольких файлов.
+- Хранение истории работ.
+- Получение задачи с деталями.
+- Редактирование исходного задания.
+- Редактирование сгенерированного задания.
+- Перегенерация отдельного задания.
+- Удаление работы из библиотеки.
+- Экспорт выбранных вариантов.
+- DOCX/PDF export proxy.
+- Retry генерации и валидации.
+- Устойчивость к падению одного `VariantItem`.
 
-Последняя проверка DOCX:
+### Python / analyze
 
-- endpoint: `GET /api/v1/tasks/919a594b-c7be-40c9-b045-dc829319f4f6/export`
-- результат: `200 OK`
-- размер: `44931` байт
-- длительность через core: около `110 ms`
+- FastAPI сервис.
+- Парсинг PDF/DOCX/PPTX/TXT/PNG/JPG/JPEG.
+- Постраничный PDF parsing.
+- OCR через Tesseract.
+- Vision OCR через GigaChat.
+- Math OCR для математических предметов.
+- Извлечение Office Math из DOCX/PPTX.
+- Анализ исходника через GigaChat.
+- Предметные prompts.
+- Генерация вариантов через GigaChat.
+- Валидация вариантов через GigaChat.
+- Локальная проверка дублей до LLM-валидации.
+- DOCX export.
+- PDF export.
+- Формулы в DOCX/PDF export.
 
-## Текущие ограничения
+### Frontend
 
-1. Нет полноценной авторизации: пользователь определяется по `X-User-ID`.
-2. GigaChat используется синхронно и с concurrency `1`.
-3. Валидация не знает правильные ответы и answer key.
-4. Межвариантная уникальность реализована через `previous_variants`, negative prompt, проверку полного текстового дубля и структурную проверку тестовых вопросов; глубокая семантическая близость пока не проверяется отдельной моделью.
-5. PDF с плохим текстовым слоем может парситься хуже исходного DOCX.
-6. Для изображений качество зависит от GigaChat vision OCR.
-7. PDF-экспорт пока не реализован; реализован DOCX.
-8. `parser_text` есть в репозитории, но не подключен к основной цепочке.
-9. Часть старых Markdown-файлов в репозитории повреждена кодировкой; этот файл написан заново в нормальном UTF-8.
+- Главная страница.
+- Памятка для пользователя.
+- Выбор предмета.
+- Загрузка нескольких файлов.
+- Настройки генерации.
+- Polling статуса.
+- Рабочий экран по шагам.
+- Редактирование исходника.
+- Автообновление вариантов после правки исходника.
+- Редактирование вариантов.
+- Перегенерация пункта с prompt учителя.
+- Визуальный редактор формул.
+- Таблицы в редакторе.
+- Библиотека работ.
+- Поиск и фильтры в библиотеке.
+- Удаление работ из библиотеки.
+- Выборочный экспорт.
+- DOCX/PDF скачивание.
 
-## Приоритетные доработки
+## 20. Текущие ограничения
 
-- Добавить answer key в модель анализа заданий.
-- Хранить структуру тестового вопроса: вопрос, варианты ответа, правильный ответ.
-- Улучшить валидацию фактологических заданий.
-- Усилить межвариантную проверку уникальности семантическим сравнением, если простого exact duplicate check станет недостаточно.
-- Добавить структурные логи в Python.
-- Добавить smoke-тесты Python без реального GigaChat через mock-клиент.
-- Реализовать PDF-экспорт.
-- Исправить поврежденную кодировку в существующих Markdown/TSX-комментариях.
+1. Нет полноценной авторизации, только `X-User-ID`.
+2. GigaChat является внешней зависимостью: если он недоступен или отвечает медленно, страдает генерация.
+3. При `GIGACHAT_CONCURRENCY=1` генерация больших работ может занимать заметное время.
+4. GigaChat иногда возвращает неидеальный JSON; есть `json-repair`, но это не гарантия.
+5. LLM-валидация не знает настоящие правильные ответы, если они не были явно в исходнике.
+6. Семантическая уникальность вариантов проверяется частично: prompt, previous variants, локальная проверка дублей и LLM validation. Это снижает повторы, но не дает математической гарантии.
+7. PDF без нормального текстового слоя зависит от OCR.
+8. Math OCR через GigaChat Vision может ошибаться на плохих сканах.
+9. Tesseract хорош для обычного текста, но не является надежным распознавателем формул.
+10. DOCX формулы из Word Math поддерживаются, но экзотические конструкции могут перейти в fallback.
+11. PDF export формул использует картинки; это хорошо для печати, но не для редактирования.
+12. Сложные таблицы в PDF export упрощаются.
+13. Python-логи пока не полностью структурные.
+14. Нет очереди задач уровня RabbitMQ/Kafka; асинхронность сейчас внутри Go-процесса.
+15. Если core перезапустить во время generation goroutine, незавершенная задача может остаться в промежуточном состоянии.
+16. Не хранится оригинальный файл как артефакт, хранится распознанный текст и структура.
+
+## 21. Риски для защиты и как их объяснять
+
+### Риск: ограничения GigaChat по параллельности
+
+Формулировка:
+
+> GigaChat может ограничивать количество одновременных запросов. Поэтому мы не отправляем все LLM-вызовы без контроля, а используем конфигурируемый пул. Асинхронность Go сохраняется, но внешние AI-запросы проходят через управляемую очередь.
+
+### Риск: ошибки OCR
+
+Формулировка:
+
+> Для обычного текста мы используем Tesseract, для математических материалов - GigaChat Vision с отдельным math prompt. После распознавания учитель видит исходник и может поправить ошибки до финального использования.
+
+### Риск: повторяющиеся варианты
+
+Формулировка:
+
+> Мы передаем уже созданные варианты в следующие генерации и валидатор. Дополнительно есть локальная проверка дублей до LLM-валидации. Это не абсолютная математическая гарантия, но практическая защита от повторов для MVP.
+
+### Риск: падение одного задания
+
+Формулировка:
+
+> Ошибка одного пункта не ломает всю работу. Такой пункт получает статус failed, остальные задания сохраняются, а учитель может перегенерировать проблемный пункт отдельно.
+
+### Риск: отсутствие production auth
+
+Формулировка:
+
+> Для хакатонного MVP используется `X-User-ID`, но архитектура уже фильтрует все данные по user_id. Следующий production-шаг - заменить заголовок на нормальную авторизацию без изменения бизнес-слоя.
+
+## 22. Приоритетные доработки
+
+1. Добавить полноценную авторизацию.
+2. Вынести фоновые задачи в надежную очередь.
+3. Добавить recovery зависших задач после рестарта core.
+4. Улучшить структурные логи Python.
+5. Добавить automated smoke tests для Python parsers.
+6. Добавить mock GigaChat для интеграционных тестов.
+7. Хранить оригинальные загруженные файлы как артефакты.
+8. Добавить answer key, если исходник содержит ответы.
+9. Улучшить фактологическую валидацию для истории, обществознания, литературы.
+10. Добавить более сильное сравнение семантической близости вариантов.
+11. Улучшить PDF export таблиц.
+12. Добавить очередь экспорта для больших работ.
+
+## 23. Короткое резюме для защиты
+
+Проект построен как набор сервисов:
+
+- Go core - оркестратор, API, БД, rate limit, retry и асинхронная генерация.
+- Python analyze - парсинг файлов, OCR, GigaChat, генерация, валидация и экспорт.
+- React frontend - пользовательский сценарий учителя: загрузить, проверить, поправить, скачать.
+
+Ключевые технические особенности:
+
+- поддержка нескольких файлов одной работы;
+- поддержка DOCX/PDF/PPTX/TXT/PNG/JPG;
+- извлечение формул из DOCX/PPTX;
+- math OCR для PDF/изображений;
+- управляемая очередь запросов к GigaChat;
+- fan-out/fan-in генерация;
+- retry и graceful degradation для отдельных пунктов;
+- межвариантный контекст для снижения повторов;
+- ручное редактирование и точечная перегенерация;
+- экспорт в DOCX и PDF;
+- библиотека истории запросов.

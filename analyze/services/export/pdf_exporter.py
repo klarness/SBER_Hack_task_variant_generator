@@ -5,6 +5,7 @@ import re
 import tempfile
 from pathlib import Path
 from typing import Any
+from xml.etree import ElementTree
 
 import matplotlib
 
@@ -168,8 +169,7 @@ def _add_variants(
                 story.append(Paragraph(_pdf_text(f"{item_index}. Пустой текст задания."), styles["failed"]))
                 continue
 
-            text = _content_to_plain_text(content)
-            story.append(Paragraph(_pdf_rich_text(f"{item_index}. {text}", formula_image_paths), styles["item"]))
+            story.append(Paragraph(_content_to_pdf_markup(item_index, content, formula_image_paths), styles["item"]))
 
 
 def _content_to_plain_text(content: str) -> str:
@@ -178,13 +178,125 @@ def _content_to_plain_text(content: str) -> str:
     return _clean_text(content)
 
 
+def _content_to_pdf_markup(index: int, content: str, formula_image_paths: list[str]) -> str:
+    if not _looks_like_html(content):
+        return _pdf_rich_text(f"{index}. {_clean_text(content)}", formula_image_paths)
+
+    root = _parse_html_fragment(content)
+    if root is None:
+        return _pdf_rich_text(f"{index}. {_content_to_plain_text(content)}", formula_image_paths)
+
+    body = _html_to_pdf_markup(root, formula_image_paths).strip()
+    if not body:
+        return _pdf_text(f"{index}. Пустой текст задания.")
+    return f"{_pdf_text(str(index) + '. ')}{body}"
+
+
+def _looks_like_html(value: str) -> bool:
+    return bool(re.search(r"<\s*(p|br|strong|b|em|i|u|s|ul|ol|li|table|tr|td|th|h2|h3)\b", value, flags=re.I))
+
+
+def _parse_html_fragment(value: str) -> ElementTree.Element | None:
+    try:
+        value = re.sub(r"(?is)<\s*br\s*>", "<br/>", value)
+        return ElementTree.fromstring(f"<root>{value}</root>")
+    except ElementTree.ParseError as error:
+        print(f"PDF export HTML parse error: {error}")
+        return None
+
+
+def _html_to_pdf_markup(
+    node: ElementTree.Element,
+    formula_image_paths: list[str],
+    *,
+    bold: bool = False,
+    italic: bool = False,
+    underline: bool = False,
+) -> str:
+    parts: list[str] = []
+    tag = str(node.tag).lower()
+    child_bold = bold or tag in {"strong", "b", "th", "h1", "h2", "h3"}
+    child_italic = italic or tag in {"em", "i"}
+    child_underline = underline or tag == "u"
+
+    if tag == "br":
+        return "<br/>"
+    if tag == "li":
+        parts.append("- ")
+
+    if node.text:
+        parts.append(
+            _pdf_rich_text(
+                node.text,
+                formula_image_paths,
+                bold=child_bold,
+                italic=child_italic,
+                underline=child_underline,
+            )
+        )
+
+    for child in node:
+        child_tag = str(child.tag).lower()
+        parts.append(
+            _html_to_pdf_markup(
+                child,
+                formula_image_paths,
+                bold=child_bold,
+                italic=child_italic,
+                underline=child_underline,
+            )
+        )
+        if child_tag in {"td", "th"}:
+            parts.append(" | ")
+        if child_tag in {"p", "div", "h1", "h2", "h3", "li", "tr"}:
+            parts.append("<br/>")
+        if child.tail:
+            parts.append(
+                _pdf_rich_text(
+                    child.tail,
+                    formula_image_paths,
+                    bold=child_bold,
+                    italic=child_italic,
+                    underline=child_underline,
+                )
+            )
+
+    if tag in {"p", "div", "h1", "h2", "h3", "tr"}:
+        parts.append("<br/>")
+
+    return "".join(parts)
+
+
 def _pdf_text(value: str) -> str:
+    return _pdf_text_with_marks(value)
+
+
+def _pdf_text_with_marks(
+    value: str,
+    *,
+    bold: bool = False,
+    italic: bool = False,
+    underline: bool = False,
+) -> str:
     text = html.escape(_clean_text(value))
     text = text.replace("\n", "<br/>")
+    if underline:
+        text = f"<u>{text}</u>"
+    if italic:
+        text = f"<i>{text}</i>"
+    if bold:
+        text = f"<b>{text}</b>"
     return text
 
 
-def _pdf_rich_text(value: str, formula_image_paths: list[str]) -> str:
+def _pdf_rich_text(
+    value: str,
+    formula_image_paths: list[str],
+    *,
+    bold: bool = False,
+    italic: bool = False,
+    underline: bool = False,
+) -> str:
     text = _clean_invalid_latex_markers(_clean_text(value))
     if not text:
         return ""
@@ -193,7 +305,14 @@ def _pdf_rich_text(value: str, formula_image_paths: list[str]) -> str:
     last_index = 0
     for match in re.finditer(r"\$([^$]+)\$", text, flags=re.S):
         if match.start() > last_index:
-            parts.append(_pdf_text(text[last_index:match.start()].replace("$", "")))
+            parts.append(
+                _pdf_text_with_marks(
+                    text[last_index:match.start()].replace("$", ""),
+                    bold=bold,
+                    italic=italic,
+                    underline=underline,
+                )
+            )
 
         formula = match.group(1).strip()
         image_markup = _formula_image_markup(formula, formula_image_paths)
@@ -204,7 +323,14 @@ def _pdf_rich_text(value: str, formula_image_paths: list[str]) -> str:
         last_index = match.end()
 
     if last_index < len(text):
-        parts.append(_pdf_text(text[last_index:].replace("$", "")))
+        parts.append(
+            _pdf_text_with_marks(
+                text[last_index:].replace("$", ""),
+                bold=bold,
+                italic=italic,
+                underline=underline,
+            )
+        )
 
     return "".join(parts)
 

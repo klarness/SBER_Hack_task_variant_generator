@@ -1,74 +1,89 @@
-# SBER_Hack_task_variant_generator
+# Генератор заданий
 
-Go backend for generating task variants.
+Сервис для генерации вариантов контрольных работ. Учитель загружает один или несколько файлов, система распознает исходник, генерирует варианты заданий через GigaChat, дает их отредактировать и экспортировать в DOCX/PDF.
 
-## Backend
+## Сервисы
 
-Service code lives in `core`.
+- `frontend` - React/Vite интерфейс.
+- `core` - Go API и оркестратор.
+- `analyze` - Python FastAPI: парсинг файлов, OCR, GigaChat, экспорт.
+- `postgres` - база данных.
+- `valkey` - rate limiter.
+- `migrate` - миграции БД.
 
-Required dependencies:
+## Дефолтное окружение
 
-- PostgreSQL
-- Valkey/Redis
-- Python AI worker with `/analyze`, `/generate`, `/validate`, `/export`
-
-Run infrastructure:
-
-```bash
-cd core
-docker compose up -d
-```
-
-This starts PostgreSQL, Valkey, migrations and the Go `core` API.
-
-If Docker Hub times out while pulling images, pull them separately and rerun compose:
+Создайте `.env` в корне:
 
 ```bash
-cd core
-docker compose pull postgres valkey migrate
-docker compose build core
-docker compose up -d
+cp .env.example .env
 ```
 
-Image names can be overridden in `core/.env`; see `core/.env.example`.
+Базовые переменные:
 
-Run API locally without Docker:
+```env
+GIGACHAT_CLIENT_ID=
+GIGACHAT_CLIENT_SECRET=
+GIGACHAT_CREDENTIALS=
+GIGACHAT_AUTHORIZATION_KEY=
+GIGACHAT_SCOPE=GIGACHAT_API_PERS
+GIGACHAT_MODEL=GigaChat-2-Pro
+GIGACHAT_TIMEOUT=60.0
+GIGACHAT_VERIFY_SSL_CERTS=false
+GIGACHAT_CONCURRENCY=1
+
+AI_WORKER_BASE_URL=http://analyze:8000
+AI_WORKER_CONCURRENCY=1
+RATE_LIMIT_CAPACITY=30
+RATE_LIMIT_REFILL=30
+RATE_LIMIT_WINDOW=1m
+DEFAULT_VARIANT_COUNT=2
+MAX_UPLOAD_MB=32
+
+POSTGRES_IMAGE=postgres:16-alpine
+VALKEY_IMAGE=valkey/valkey:7.2-alpine
+MIGRATE_IMAGE=migrate/migrate:v4.17.1
+```
+
+Для работы нужно заполнить один из вариантов GigaChat:
+
+- `GIGACHAT_CREDENTIALS`;
+- `GIGACHAT_AUTHORIZATION_KEY`;
+- `GIGACHAT_CLIENT_ID` + `GIGACHAT_CLIENT_SECRET`.
+
+Секреты не коммитить.
+
+## Запуск
+
+Из корня проекта:
 
 ```bash
-cd core
-go run ./cmd/api
+docker compose up -d --build
 ```
 
-Default API address is `:8080`. Main env variables:
+Адреса:
 
-- `DATABASE_URL`
-- `VALKEY_ADDR`
-- `AI_WORKER_BASE_URL`
-- `RATE_LIMIT_CAPACITY`
-- `RATE_LIMIT_REFILL`
-- `RATE_LIMIT_WINDOW`
-- `DEFAULT_VARIANT_COUNT`
-- `MAX_UPLOAD_MB`
+```text
+Frontend: http://127.0.0.1:5173
+Go API:   http://127.0.0.1:8080
+Analyze:  http://127.0.0.1:8000
+```
 
-Every `/api/v1/*` request requires `X-User-ID: <uuid>`.
-
-Create task:
+Проверка:
 
 ```bash
-curl -X POST http://localhost:8080/api/v1/tasks \
-  -H "X-User-ID: 00000000-0000-0000-0000-000000000001" \
-  -F "title=Math test" \
-  -F "variant_count=4" \
-  -F "files=@page1.jpg" \
-  -F "files=@page2.jpg"
+curl http://127.0.0.1:8080/healthz
+curl http://127.0.0.1:8000/healthz
 ```
 
-The API accepts multiple uploaded files in the same `files` multipart field and forwards them to the Python worker as one task.
+## Остановка
 
-Useful endpoints:
+```bash
+docker compose down
+```
 
-- `GET /api/v1/tasks?q=&subject=&topic=&status=` - task library search and filtering
-- `GET /api/v1/tasks/{id}` - task status, source items and generated variants
-- `PATCH /api/v1/variants/{id}/items/{item_id}` - manual item edit, saved to edit history
-- `POST /api/v1/variants/{id}/items/{item_id}/regenerate` - point regeneration with validation retries
-- `GET /api/v1/tasks/{id}/export` - proxy export through the Python worker
+Удалить данные БД и Valkey:
+
+```bash
+docker compose down -v
+```

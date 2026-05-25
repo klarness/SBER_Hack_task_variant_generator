@@ -17,6 +17,7 @@ from analyze.services.llm.prompts.generation_prompts import (
     build_validate_prompt,
 )
 from analyze.services.llm.prompts.subject_prompts import subject_prompt
+from analyze.services.normalization.html_text import html_to_prompt_text
 
 load_dotenv()
 
@@ -98,10 +99,12 @@ class GigaChatClient:
     async def generate_variant(self, request: dict[str, Any]) -> str:
         settings = normalize_generation_settings(request.get("settings") or {})
         previous_variants = normalize_previous_variants(request.get("previous_variants"))
-        request = {**request, "settings": settings, "previous_variants": previous_variants}
+        request = sanitize_prompt_request(
+            {**request, "settings": settings, "previous_variants": previous_variants}
+        )
 
         settings_text = render_generation_settings(settings)
-        previous_variants_text = render_previous_variants(previous_variants)
+        previous_variants_text = render_previous_variants(request["previous_variants"])
         subject_profile = subject_prompt(str(request.get("subject") or ""))
         system_prompt, user_prompt = build_generate_prompt(
             request=request,
@@ -124,12 +127,14 @@ class GigaChatClient:
     async def validate_variant(self, request: dict[str, Any]) -> bool:
         settings = normalize_generation_settings(request.get("settings") or {})
         previous_variants = normalize_previous_variants(request.get("previous_variants"))
-        if is_duplicate_variant(str(request.get("generated") or ""), previous_variants):
+        request = sanitize_prompt_request(
+            {**request, "settings": settings, "previous_variants": previous_variants}
+        )
+        if is_duplicate_variant(str(request.get("generated") or ""), request["previous_variants"]):
             return False
 
-        request = {**request, "settings": settings, "previous_variants": previous_variants}
         settings_text = render_generation_settings(settings)
-        previous_variants_text = render_previous_variants(previous_variants)
+        previous_variants_text = render_previous_variants(request["previous_variants"])
         subject_profile = subject_prompt(str(request.get("subject") or ""))
         system_prompt, user_prompt = build_validate_prompt(
             request=request,
@@ -445,7 +450,29 @@ def select_generation_strategy(settings: dict[str, Any]) -> str:
 def normalize_previous_variants(value: Any) -> list[str]:
     if not isinstance(value, list):
         return []
-    return [str(item).strip() for item in value if str(item).strip()]
+    variants: list[str] = []
+    for item in value:
+        text = html_to_prompt_text(str(item)).strip()
+        if text:
+            variants.append(text)
+    return variants
+
+
+def sanitize_prompt_request(request: dict[str, Any]) -> dict[str, Any]:
+    sanitized = dict(request)
+    for key in ("source_content", "context", "custom_prompt", "original", "generated"):
+        if key in sanitized:
+            sanitized[key] = html_to_prompt_text(str(sanitized.get(key) or ""))
+    previous_variants = sanitized.get("previous_variants")
+    if isinstance(previous_variants, list):
+        sanitized["previous_variants"] = [
+            text
+            for text in (html_to_prompt_text(str(item)) for item in previous_variants)
+            if text
+        ]
+    else:
+        sanitized["previous_variants"] = []
+    return sanitized
 
 
 def render_previous_variants(previous_variants: list[str]) -> str:
