@@ -162,6 +162,23 @@ function MathFormulaView({
     fieldRef.current.focus();
   }, [isOpen]);
 
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        close();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [isOpen]);
+
   const save = () => {
     const nextLatex = stripFormulaMarkers(
       fieldRef.current?.getValue("latex") || draft
@@ -235,68 +252,82 @@ function MathFormulaView({
       />
 
       {isOpen && (
-        <span className="math-formula-popover">
-          <span className="math-formula-popover-head">
-            <span className="label-mono">Формула</span>
-            <button
-              type="button"
-              className="math-formula-icon-button"
-              onClick={close}
-              aria-label="Закрыть"
-            >
-              <X size={14} />
-            </button>
-          </span>
-
-          <span className="math-formula-preview">
-            <span dangerouslySetInnerHTML={{ __html: preview }} />
-          </span>
-
-          <math-field
-            ref={fieldRef}
-            class="math-formula-field"
-            default-mode="math"
-            math-virtual-keyboard-policy="auto"
-            smart-fence="true"
-            smart-mode="true"
-            onInput={(event) => {
-              const field = event.currentTarget as MathfieldElement;
-              setDraft(field.getValue("latex"));
-            }}
+        <>
+          <span
+            className="math-formula-popover-backdrop"
+            onClick={close}
+            aria-hidden="true"
           />
+          <span
+            className="math-formula-popover"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <span className="math-formula-popover-head">
+              <span className="label-mono">Формула</span>
+              <button
+                type="button"
+                className="math-formula-icon-button"
+                onClick={close}
+                aria-label="Закрыть"
+              >
+                <X size={14} />
+              </button>
+            </span>
 
-          <span className="math-formula-template-row">
-            <button type="button" onClick={() => insertTemplate("\\frac{}{}")}>
-              <Divide size={13} />
-              Дробь
-            </button>
-            <button type="button" onClick={() => insertTemplate("^{}")}>
-              <Superscript size={13} />
-              Степень
-            </button>
-            <button type="button" onClick={() => insertTemplate("\\sqrt{}")}>
-              <Radical size={13} />
-              Корень
-            </button>
-            <button type="button" onClick={() => insertTemplate("_{}")}>
-              Индекс
-            </button>
-          </span>
+            <span className="math-formula-preview">
+              <span dangerouslySetInnerHTML={{ __html: preview }} />
+            </span>
 
-          <span className="math-formula-actions">
-            <button
-              type="button"
-              className="math-formula-secondary"
-              onClick={close}
-            >
-              Отмена
-            </button>
-            <button type="button" className="math-formula-primary" onClick={save}>
-              <Check size={14} />
-              Готово
-            </button>
+            <math-field
+              ref={fieldRef}
+              class="math-formula-field"
+              default-mode="math"
+              math-virtual-keyboard-policy="manual"
+              smart-fence="true"
+              smart-mode="true"
+              onInput={(event) => {
+                const field = event.currentTarget as MathfieldElement;
+                setDraft(field.getValue("latex"));
+              }}
+            />
+
+            <span className="math-formula-template-row">
+              <button type="button" onClick={() => insertTemplate("\\frac{}{}")}>
+                <Divide size={13} />
+                Дробь
+              </button>
+              <button type="button" onClick={() => insertTemplate("^{}")}>
+                <Superscript size={13} />
+                Степень
+              </button>
+              <button type="button" onClick={() => insertTemplate("\\sqrt{}")}>
+                <Radical size={13} />
+                Корень
+              </button>
+              <button type="button" onClick={() => insertTemplate("_{}")}>
+                Индекс
+              </button>
+            </span>
+
+            <span className="math-formula-actions">
+              <button
+                type="button"
+                className="math-formula-secondary"
+                onClick={close}
+              >
+                Отмена
+              </button>
+              <button
+                type="button"
+                className="math-formula-primary"
+                onClick={save}
+              >
+                <Check size={14} />
+                Готово
+              </button>
+            </span>
           </span>
-        </span>
+        </>
       )}
     </NodeViewWrapper>
   );

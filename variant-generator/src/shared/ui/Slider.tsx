@@ -34,15 +34,28 @@ export function Slider({
           </span>
         </div>
       )}
-      <div className="relative h-[22px]">
-        <div className="absolute left-0 right-0 top-[9px] h-1 rounded-full bg-[rgba(20,30,10,0.08)]" />
+      <div className="relative h-[44px]">
+        {/* floating value bubble above the thumb */}
         <div
-          className="absolute left-0 top-[9px] h-1 rounded-full"
+          className="absolute -translate-x-1/2 pointer-events-none top-0"
+          style={{ left: `${pct}%` }}
+        >
+          <div className="px-2.5 py-0.5 rounded-full bg-accent text-white text-xs font-bold tabular-nums shadow-soft">
+            {value}
+          </div>
+        </div>
+
+        {/* track + filled */}
+        <div className="absolute left-0 right-0 top-[31px] h-1 rounded-full bg-[rgba(20,30,10,0.08)]" />
+        <div
+          className="absolute left-0 top-[31px] h-1 rounded-full"
           style={{
             width: `${pct}%`,
             background: "linear-gradient(90deg, #D4EFB0, #23A038)",
           }}
         />
+
+        {/* native range input on top for interaction */}
         <input
           type="range"
           min={min}
@@ -50,10 +63,12 @@ export function Slider({
           step={step}
           value={value}
           onChange={handle}
-          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+          className="absolute left-0 right-0 bottom-0 w-full h-[22px] opacity-0 cursor-pointer"
         />
+
+        {/* visual thumb */}
         <div
-          className="absolute top-0 w-[22px] h-[22px] rounded-full bg-white border-[2.5px] border-accent pointer-events-none"
+          className="absolute top-[22px] w-[22px] h-[22px] rounded-full bg-white border-[2.5px] border-accent pointer-events-none"
           style={{
             left: `calc(${pct}% - 11px)`,
             boxShadow: "0 6px 14px -4px rgba(35,160,56,0.45)",

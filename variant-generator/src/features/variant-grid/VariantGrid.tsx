@@ -22,6 +22,13 @@ export function VariantGrid({ task }: Props) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (variants.length < 2) return;
+      const active = document.activeElement;
+      const isEditing =
+        active?.closest('[contenteditable="true"]') ||
+        active?.closest("textarea") ||
+        active?.closest("input") ||
+        active?.closest("math-field");
+      if (isEditing) return;
       if (e.key === "ArrowLeft") setIndex((i) => (i - 1 + variants.length) % variants.length);
       else if (e.key === "ArrowRight") setIndex((i) => (i + 1) % variants.length);
     };
