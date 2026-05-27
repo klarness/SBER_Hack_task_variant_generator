@@ -22,6 +22,10 @@ from analyze.services.normalization.artifacts import (
     filter_stale_artifact_variants,
 )
 from analyze.services.normalization.html_text import html_to_prompt_text
+from analyze.services.normalization.lexical import (
+    lexical_variation_is_valid,
+    render_lexical_uniqueness_hint,
+)
 from analyze.services.normalization.structure import (
     apply_custom_option_instruction,
     choice_structure_matches,
@@ -129,6 +133,7 @@ class GigaChatClient:
         )
         structure_hint = render_choice_structure_hint(layout_source)
         previous_variants_text = render_previous_variants(request["previous_variants"])
+        lexical_hint = render_lexical_uniqueness_hint(layout_source, request["previous_variants"])
         system_prompt, user_prompt = build_generate_prompt(
             request=request,
             settings_text=settings_text,
@@ -136,6 +141,7 @@ class GigaChatClient:
             strategy=select_generation_strategy(settings),
             subject_profile=subject_profile,
             structure_hint=structure_hint,
+            lexical_hint=lexical_hint,
         )
 
         response = await self.chat_json(
@@ -180,16 +186,28 @@ class GigaChatClient:
         ):
             return False
 
+        if not lexical_variation_is_valid(
+            str(request.get("original") or ""),
+            str(request.get("generated") or ""),
+            request["previous_variants"],
+        ):
+            return False
+
         settings_text = render_generation_settings(settings)
         previous_variants_text = render_previous_variants(request["previous_variants"])
         subject_profile = subject_prompt(str(request.get("subject") or ""))
         structure_hint = render_choice_structure_hint(str(request.get("original") or ""))
+        lexical_hint = render_lexical_uniqueness_hint(
+            str(request.get("original") or ""),
+            request["previous_variants"],
+        )
         system_prompt, user_prompt = build_validate_prompt(
             request=request,
             settings_text=settings_text,
             previous_variants_text=previous_variants_text,
             subject_profile=subject_profile,
             structure_hint=structure_hint,
+            lexical_hint=lexical_hint,
         )
 
         response = await self.chat_json(

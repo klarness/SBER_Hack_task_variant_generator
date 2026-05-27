@@ -16,7 +16,11 @@ SUPERSCRIPT_DIGITS = {
 SUPERSCRIPT_MAP = str.maketrans(SUPERSCRIPT_DIGITS)
 
 MATH_HINT_RE = re.compile(r"[A-Za-z][0-9²³¹^]|[0-9][A-Za-z]|[=+\-*/·×^]|[()]{1}")
-TEXT_WORD_RE = re.compile(r"[А-Яа-яЁё]{3,}")
+TEXT_WORD_RE = re.compile(r"[А-Яа-яЁёA-Za-z]{3,}")
+DIAGNOSTIC_TEXT_RE = re.compile(
+    r"(ai worker failed|gigachat|generated item did not pass validation|all attempts fail|status \d{3}|detail)",
+    re.IGNORECASE,
+)
 CHOICE_MARKER_RE = re.compile(r"(?:(?<=^)|(?<=[;\s]))([а-гА-Гa-dA-D]\)\s*)")
 
 
@@ -137,6 +141,8 @@ def _unicode_superscripts_to_latex(value: str) -> str:
 def _looks_like_formula(value: str) -> bool:
     value = value.strip()
     if not value:
+        return False
+    if DIAGNOSTIC_TEXT_RE.search(value):
         return False
     if TEXT_WORD_RE.search(value):
         return False

@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { AlertCircle, Loader2, Pencil, RotateCw } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { RichEditor } from "@/features/editor/RichEditor";
 import { RegeneratePromptDialog } from "@/features/regeneration/RegeneratePromptDialog";
 import {
@@ -30,6 +30,11 @@ export function VariantItem({
   const [isPromptOpen, setIsPromptOpen] = useState(false);
   const isFailed = item.status === "failed";
 
+  useEffect(() => {
+    setLocalContent(item.content);
+    setDraftContent(item.content);
+  }, [item.content]);
+
   const editMutation = useMutation({
     mutationFn: (content: string) =>
       editVariantItem(item.variant_id, item.id, content),
@@ -38,6 +43,7 @@ export function VariantItem({
       setDraftContent(updated.content);
       patchInCache(qc, taskId, item.id, updated);
       setIsPromptOpen(false);
+      setIsEditing(false);
     },
   });
 
@@ -76,23 +82,27 @@ export function VariantItem({
               />
             </span>
           )}
-          {!isFailed && (
-            <button
-              type="button"
-              onClick={() => {
-                setDraftContent(localContent);
-                setIsEditing((value) => !value);
-              }}
-              title={isEditing ? "Закрыть редактор" : "Редактировать"}
-              className={cn(
-                "w-8 h-8 inline-flex items-center justify-center rounded-lg",
-                "border border-border bg-white/60 backdrop-blur-sm",
-                "text-ink-600 hover:bg-surface-subtle hover:text-ink-900 transition"
-              )}
-            >
-              <Pencil size={14} strokeWidth={2} />
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={() => {
+              setDraftContent(localContent);
+              setIsEditing((value) => !value);
+            }}
+            title={
+              isEditing
+                ? "Закрыть редактор"
+                : isFailed
+                  ? "Написать вручную"
+                  : "Редактировать"
+            }
+            className={cn(
+              "w-8 h-8 inline-flex items-center justify-center rounded-lg",
+              "border border-border bg-white/60 backdrop-blur-sm",
+              "text-ink-600 hover:bg-surface-subtle hover:text-ink-900 transition"
+            )}
+          >
+            <Pencil size={14} strokeWidth={2} />
+          </button>
           <button
             type="button"
             onClick={() => setIsPromptOpen(true)}
@@ -115,26 +125,13 @@ export function VariantItem({
       </div>
 
       <div className="min-w-0">
-        {isFailed ? (
-          <div className="rounded-xl border border-warn-border bg-warn-bg px-3.5 py-2.5 text-sm text-warn-ink">
-            <div className="flex items-start gap-2">
-              <AlertCircle size={15} className="mt-0.5 shrink-0" />
-              <div>
-                <p className="font-medium">Не удалось сгенерировать этот пункт</p>
-                <p className="mt-1 text-xs opacity-80">
-                  Попробуйте выполнить генерацию задания еще раз
-                </p>
-              </div>
-            </div>
-          </div>
-        ) : isEditing ? (
+        {isEditing ? (
           <RichEditor
             value={draftContent}
             onChange={setDraftContent}
             onCommit={(html) => {
               setLocalContent(html);
               editMutation.mutate(html);
-              setIsEditing(false);
             }}
             onCancel={() => {
               setDraftContent(localContent);
@@ -142,6 +139,33 @@ export function VariantItem({
             }}
             compact
           />
+        ) : isFailed ? (
+          <div className="rounded-xl border border-warn-border bg-warn-bg px-3.5 py-2.5 text-sm text-warn-ink">
+            <div className="flex items-start gap-2">
+              <AlertCircle size={15} className="mt-0.5 shrink-0" />
+              <div>
+                <p className="font-medium">Не удалось сгенерировать этот пункт</p>
+                <p className="mt-1 text-xs opacity-80">
+                  Можно перегенерировать пункт или написать текст вручную.
+                </p>
+                {item.error_message && (
+                  <p className="mt-1 text-[11px] opacity-65 line-clamp-2">
+                    {item.error_message}
+                  </p>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDraftContent(localContent);
+                    setIsEditing(true);
+                  }}
+                  className="mt-2 h-8 px-3 rounded-lg border border-warn-border bg-white/70 text-xs font-semibold text-warn-ink hover:bg-white transition"
+                >
+                  Написать вручную
+                </button>
+              </div>
+            </div>
+          </div>
         ) : (
           <LatexText
             text={localContent}

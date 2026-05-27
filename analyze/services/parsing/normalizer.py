@@ -10,6 +10,7 @@ class TextNormalizer:
 
         text = TextNormalizer._replace_unicode_punctuation(text)
         text = TextNormalizer._remove_page_meta(text)
+        text = TextNormalizer._remove_generation_failure_blocks(text)
         text = TextNormalizer._remove_ocr_artifacts(text)
         text = TextNormalizer._normalize_choice_markers(text)
         text = normalize_math_markup(text)
@@ -55,6 +56,25 @@ class TextNormalizer:
         ]
         for pattern in patterns:
             text = re.sub(pattern, "", text)
+        return text
+
+    @staticmethod
+    def _remove_generation_failure_blocks(text: str) -> str:
+        text = re.sub(
+            r"(?m)^\s*(?:\d+\.\s*)?Не удалось сгенерировать этот пункт\.\s*All attempts fail:\s*\n(?:\s*#\d+:\s*[^\n]*(?:\n|$))+",
+            "",
+            text,
+        )
+        text = re.sub(
+            r"(?m)^\s*(?:\d+\.\s*)?Не удалось сгенерировать этот пункт\.\s*[^\n]*(?:\n|$)",
+            "",
+            text,
+        )
+        text = re.sub(
+            r"(?m)^\s*All attempts fail:\s*\n(?:\s*#\d+:\s*[^\n]*(?:\n|$))+",
+            "",
+            text,
+        )
         return text
 
     @staticmethod
