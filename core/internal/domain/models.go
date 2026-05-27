@@ -121,6 +121,7 @@ type GenerateRequest struct {
 	Order            int             `json:"order"`
 	Context          string          `json:"context,omitempty"`
 	SourceContent    string          `json:"source_content"`
+	CurrentContent   string          `json:"current_content,omitempty"`
 	Settings         json.RawMessage `json:"settings,omitempty"`
 	PreviousVariants []string        `json:"previous_variants,omitempty"`
 	CustomPrompt     string          `json:"custom_prompt,omitempty"`
@@ -136,6 +137,7 @@ type ValidateRequest struct {
 	Generated        string          `json:"generated"`
 	Settings         json.RawMessage `json:"settings,omitempty"`
 	PreviousVariants []string        `json:"previous_variants,omitempty"`
+	CustomPrompt     string          `json:"custom_prompt,omitempty"`
 }
 
 type ExportResult struct {

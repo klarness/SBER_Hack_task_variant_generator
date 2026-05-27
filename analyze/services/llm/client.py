@@ -17,7 +17,18 @@ from analyze.services.llm.prompts.generation_prompts import (
     build_validate_prompt,
 )
 from analyze.services.llm.prompts.subject_prompts import subject_prompt
+from analyze.services.normalization.artifacts import (
+    cleanup_generated_question_artifacts,
+    filter_stale_artifact_variants,
+)
 from analyze.services.normalization.html_text import html_to_prompt_text
+from analyze.services.normalization.structure import (
+    apply_custom_option_instruction,
+    choice_structure_matches,
+    detect_choice_structure,
+    normalize_generated_choice_layout,
+    render_choice_structure_hint,
+)
 
 load_dotenv()
 
@@ -102,27 +113,49 @@ class GigaChatClient:
         request = sanitize_prompt_request(
             {**request, "settings": settings, "previous_variants": previous_variants}
         )
+        request["previous_variants"] = filter_previous_variants_for_current_source(
+            str(request.get("source_content") or ""),
+            request["previous_variants"],
+        )
 
         settings_text = render_generation_settings(settings)
         previous_variants_text = render_previous_variants(request["previous_variants"])
         subject_profile = subject_prompt(str(request.get("subject") or ""))
+        current_content = str(request.get("current_content") or "").strip()
+        layout_source = current_content or str(request.get("source_content") or "")
+        request["previous_variants"] = filter_stale_artifact_variants(
+            layout_source,
+            request["previous_variants"],
+        )
+        structure_hint = render_choice_structure_hint(layout_source)
+        previous_variants_text = render_previous_variants(request["previous_variants"])
         system_prompt, user_prompt = build_generate_prompt(
             request=request,
             settings_text=settings_text,
             previous_variants_text=previous_variants_text,
             strategy=select_generation_strategy(settings),
             subject_profile=subject_profile,
+            structure_hint=structure_hint,
         )
 
         response = await self.chat_json(
             system=system_prompt,
             user=user_prompt,
-            temperature=0.45,
+            temperature=0.25 if str(request.get("custom_prompt") or "").strip() else 0.45,
         )
         content = response.get("content")
         if not isinstance(content, str) or not content.strip():
             raise ValueError("GigaChat response does not contain non-empty content.")
-        return content.strip()
+        content = cleanup_generated_question_artifacts(layout_source, content.strip())
+        content = apply_custom_option_instruction(
+            base_content=layout_source,
+            generated=content,
+            custom_prompt=str(request.get("custom_prompt") or ""),
+        )
+        return normalize_generated_choice_layout(
+            layout_source,
+            content,
+        )
 
     async def validate_variant(self, request: dict[str, Any]) -> bool:
         settings = normalize_generation_settings(request.get("settings") or {})
@@ -130,17 +163,33 @@ class GigaChatClient:
         request = sanitize_prompt_request(
             {**request, "settings": settings, "previous_variants": previous_variants}
         )
+        request["previous_variants"] = filter_previous_variants_for_current_source(
+            str(request.get("original") or ""),
+            request["previous_variants"],
+        )
+        request["previous_variants"] = filter_stale_artifact_variants(
+            str(request.get("original") or ""),
+            request["previous_variants"],
+        )
         if is_duplicate_variant(str(request.get("generated") or ""), request["previous_variants"]):
+            return False
+
+        if not choice_structure_matches(
+            str(request.get("original") or ""),
+            str(request.get("generated") or ""),
+        ):
             return False
 
         settings_text = render_generation_settings(settings)
         previous_variants_text = render_previous_variants(request["previous_variants"])
         subject_profile = subject_prompt(str(request.get("subject") or ""))
+        structure_hint = render_choice_structure_hint(str(request.get("original") or ""))
         system_prompt, user_prompt = build_validate_prompt(
             request=request,
             settings_text=settings_text,
             previous_variants_text=previous_variants_text,
             subject_profile=subject_profile,
+            structure_hint=structure_hint,
         )
 
         response = await self.chat_json(
@@ -458,9 +507,21 @@ def normalize_previous_variants(value: Any) -> list[str]:
     return variants
 
 
+def filter_previous_variants_for_current_source(source: str, previous_variants: list[str]) -> list[str]:
+    source_structure = detect_choice_structure(source)
+    if not source_structure.exists:
+        return previous_variants
+
+    return [
+        previous
+        for previous in previous_variants
+        if choice_structure_matches(source, previous)
+    ]
+
+
 def sanitize_prompt_request(request: dict[str, Any]) -> dict[str, Any]:
     sanitized = dict(request)
-    for key in ("source_content", "context", "custom_prompt", "original", "generated"):
+    for key in ("source_content", "current_content", "context", "custom_prompt", "original", "generated"):
         if key in sanitized:
             sanitized[key] = html_to_prompt_text(str(sanitized.get(key) or ""))
     previous_variants = sanitized.get("previous_variants")

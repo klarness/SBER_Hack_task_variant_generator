@@ -3,7 +3,7 @@ import { useMutation, useQueryClient, type QueryClient } from "@tanstack/react-q
 import { Loader2, Pencil, X } from "lucide-react";
 import { RichEditor } from "@/features/editor/RichEditor";
 import { editTaskItem } from "@/shared/api/tasks";
-import { regenerateVariantItem } from "@/shared/api/variants";
+import { regenerateTaskItemVariants } from "@/shared/api/variants";
 import { cn } from "@/shared/lib/cn";
 import type { Task, TaskItem, VariantItem } from "@/shared/types/domain";
 import { LatexText } from "@/shared/ui/LatexText";
@@ -71,13 +71,8 @@ function OriginalTaskItem({ task, item }: { task: Task; item: TaskItem }) {
   const regenMutation = useMutation({
     mutationFn: async () => {
       const targets = relatedVariantItems(task, item.id);
-      const updated: VariantItem[] = [];
-      for (const target of targets) {
-        updated.push(
-          await regenerateVariantItem(target.variantId, target.itemId)
-        );
-      }
-      return updated;
+      if (targets.length === 0) return [];
+      return regenerateTaskItemVariants(task.id, item.id);
     },
     onSuccess: (updatedItems) => {
       patchVariantItemsInCache(qc, task.id, updatedItems);

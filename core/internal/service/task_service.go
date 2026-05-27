@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"log/slog"
+	"sort"
 	"strings"
 	"time"
 
@@ -16,6 +17,13 @@ type TaskService struct {
 	repo   domain.Repository
 	ai     domain.AIClient
 	logger *slog.Logger
+}
+
+type RegenerateVariantItemOptions struct {
+	CustomPrompt                string
+	IgnorePreviousVariants      bool
+	PreviousVariantsOverride    []string
+	UsePreviousVariantsOverride bool
 }
 
 func NewTaskService(repo domain.Repository, ai domain.AIClient, logger *slog.Logger) *TaskService {
@@ -181,14 +189,15 @@ func (s *TaskService) EditTaskItem(ctx context.Context, userID, taskID, itemID u
 	return item, nil
 }
 
-func (s *TaskService) RegenerateVariantItem(ctx context.Context, userID, variantID, itemID uuid.UUID, customPrompt string) (*domain.VariantItem, error) {
+func (s *TaskService) RegenerateVariantItem(ctx context.Context, userID, variantID, itemID uuid.UUID, options RegenerateVariantItemOptions) (*domain.VariantItem, error) {
 	s.logger.InfoContext(ctx, "variant item regeneration requested",
 		"user_id", userID.String(),
 		"variant_id", variantID.String(),
 		"variant_item_id", itemID.String(),
-		"custom_prompt_bytes", len(customPrompt),
+		"custom_prompt_bytes", len(options.CustomPrompt),
+		"ignore_previous_variants", options.IgnorePreviousVariants,
 	)
-	customPrompt = strings.TrimSpace(customPrompt)
+	customPrompt := strings.TrimSpace(options.CustomPrompt)
 	task, taskItem, variantItem, err := s.repo.GetVariantItemForRegeneration(ctx, userID, variantID, itemID)
 	if err != nil {
 		s.logger.ErrorContext(ctx, "variant item regeneration lookup failed",
@@ -213,8 +222,19 @@ func (s *TaskService) RegenerateVariantItem(ctx context.Context, userID, variant
 	} else {
 		variantNumber, previousVariants = variantContextForItem(detailedTask, taskItem.ID, itemID)
 	}
+	if options.UsePreviousVariantsOverride {
+		previousVariants = append([]string(nil), options.PreviousVariantsOverride...)
+	} else if options.IgnorePreviousVariants {
+		previousVariants = nil
+	}
 
 	var generated *domain.VariantItem
+	validationOriginal := taskItem.Content
+	currentContent := ""
+	if customPrompt != "" && strings.TrimSpace(variantItem.Content) != "" {
+		validationOriginal = variantItem.Content
+		currentContent = variantItem.Content
+	}
 	attempt := 0
 	err = retry.Do(
 		func() error {
@@ -237,6 +257,7 @@ func (s *TaskService) RegenerateVariantItem(ctx context.Context, userID, variant
 				Order:            taskItem.Order,
 				Context:          taskItem.Context,
 				SourceContent:    taskItem.Content,
+				CurrentContent:   currentContent,
 				Settings:         task.Settings,
 				PreviousVariants: previousVariants,
 				CustomPrompt:     customPrompt,
@@ -251,10 +272,11 @@ func (s *TaskService) RegenerateVariantItem(ctx context.Context, userID, variant
 				TaskItemID:       taskItem.ID,
 				Subject:          task.Subject,
 				VariantNumber:    variantNumber,
-				Original:         taskItem.Content,
+				Original:         validationOriginal,
 				Generated:        item.Content,
 				Settings:         task.Settings,
 				PreviousVariants: previousVariants,
+				CustomPrompt:     customPrompt,
 			})
 			if err != nil {
 				return err
@@ -320,6 +342,92 @@ func (s *TaskService) RegenerateVariantItem(ctx context.Context, userID, variant
 		"variant_item_id", itemID.String(),
 	)
 	return variantItem, nil
+}
+
+func (s *TaskService) RegenerateTaskItemVariants(ctx context.Context, userID, taskID, taskItemID uuid.UUID) ([]domain.VariantItem, error) {
+	s.logger.InfoContext(ctx, "task item related variants regeneration requested",
+		"user_id", userID.String(),
+		"task_id", taskID.String(),
+		"task_item_id", taskItemID.String(),
+	)
+	task, err := s.repo.GetTaskWithDetails(ctx, userID, taskID)
+	if err != nil {
+		s.logger.ErrorContext(ctx, "task item related variants lookup failed",
+			"user_id", userID.String(),
+			"task_id", taskID.String(),
+			"task_item_id", taskItemID.String(),
+			"error", err,
+		)
+		return nil, err
+	}
+
+	targets := variantTargetsForTaskItem(task, taskItemID)
+	previousFresh := []string(nil)
+	updated := make([]domain.VariantItem, 0, len(targets))
+	var lastErr error
+	for _, target := range targets {
+		item, regenErr := s.RegenerateVariantItem(ctx, userID, target.variantID, target.itemID, RegenerateVariantItemOptions{
+			IgnorePreviousVariants:      true,
+			PreviousVariantsOverride:    previousFresh,
+			UsePreviousVariantsOverride: true,
+		})
+		if regenErr != nil {
+			lastErr = regenErr
+			s.logger.WarnContext(ctx, "task item related variant regeneration failed",
+				"user_id", userID.String(),
+				"task_id", taskID.String(),
+				"task_item_id", taskItemID.String(),
+				"variant_id", target.variantID.String(),
+				"variant_item_id", target.itemID.String(),
+				"variant_number", target.variantNumber,
+				"error", regenErr,
+			)
+			continue
+		}
+		updated = append(updated, *item)
+		if strings.TrimSpace(item.Content) != "" {
+			previousFresh = append(previousFresh, item.Content)
+		}
+	}
+	if len(updated) == 0 && lastErr != nil {
+		return nil, lastErr
+	}
+	s.logger.InfoContext(ctx, "task item related variants regeneration completed",
+		"user_id", userID.String(),
+		"task_id", taskID.String(),
+		"task_item_id", taskItemID.String(),
+		"targets_count", len(targets),
+		"updated_count", len(updated),
+	)
+	return updated, nil
+}
+
+type variantTarget struct {
+	variantNumber int
+	variantID     uuid.UUID
+	itemID        uuid.UUID
+}
+
+func variantTargetsForTaskItem(task *domain.Task, taskItemID uuid.UUID) []variantTarget {
+	targets := []variantTarget(nil)
+	if task == nil {
+		return targets
+	}
+	for _, variant := range task.Variants {
+		for _, item := range variant.Items {
+			if item.TaskItemID == taskItemID {
+				targets = append(targets, variantTarget{
+					variantNumber: variant.VariantNumber,
+					variantID:     variant.ID,
+					itemID:        item.ID,
+				})
+			}
+		}
+	}
+	sort.Slice(targets, func(i, j int) bool {
+		return targets[i].variantNumber < targets[j].variantNumber
+	})
+	return targets
 }
 
 func variantContextForItem(task *domain.Task, taskItemID, currentItemID uuid.UUID) (int, []string) {

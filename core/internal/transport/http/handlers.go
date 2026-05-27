@@ -258,8 +258,9 @@ func (h *Handlers) RegenerateVariantItem(w stdhttp.ResponseWriter, r *stdhttp.Re
 	}
 
 	var req struct {
-		Prompt       string `json:"prompt"`
-		CustomPrompt string `json:"custom_prompt"`
+		Prompt                 string `json:"prompt"`
+		CustomPrompt           string `json:"custom_prompt"`
+		IgnorePreviousVariants bool   `json:"ignore_previous_variants"`
 	}
 	if r.Body != nil {
 		if err = json.NewDecoder(r.Body).Decode(&req); err != nil && !errors.Is(err, io.EOF) {
@@ -273,12 +274,36 @@ func (h *Handlers) RegenerateVariantItem(w stdhttp.ResponseWriter, r *stdhttp.Re
 		customPrompt = req.Prompt
 	}
 
-	item, err := h.taskService.RegenerateVariantItem(r.Context(), userID, variantID, itemID, customPrompt)
+	item, err := h.taskService.RegenerateVariantItem(r.Context(), userID, variantID, itemID, service.RegenerateVariantItemOptions{
+		CustomPrompt:           customPrompt,
+		IgnorePreviousVariants: req.IgnorePreviousVariants,
+	})
 	if err != nil {
 		writeDomainError(w, err)
 		return
 	}
 	writeJSON(w, stdhttp.StatusOK, item)
+}
+
+func (h *Handlers) RegenerateTaskItemVariants(w stdhttp.ResponseWriter, r *stdhttp.Request) {
+	userID, _ := userIDFromContext(r.Context())
+	taskID, err := parseUUIDParam(r, "id")
+	if err != nil {
+		writeError(w, stdhttp.StatusBadRequest, err)
+		return
+	}
+	itemID, err := parseUUIDParam(r, "item_id")
+	if err != nil {
+		writeError(w, stdhttp.StatusBadRequest, err)
+		return
+	}
+
+	items, err := h.taskService.RegenerateTaskItemVariants(r.Context(), userID, taskID, itemID)
+	if err != nil {
+		writeDomainError(w, err)
+		return
+	}
+	writeJSON(w, stdhttp.StatusOK, items)
 }
 
 func (h *Handlers) ExportTask(w stdhttp.ResponseWriter, r *stdhttp.Request) {

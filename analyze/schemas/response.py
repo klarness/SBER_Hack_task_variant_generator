@@ -30,6 +30,7 @@ class GenerateRequest(BaseModel):
     order: int = 1
     context: str = ""
     source_content: str
+    current_content: str = ""
     settings: dict | None = None
     previous_variants: list[str] = Field(default_factory=list)
     custom_prompt: str = ""
@@ -49,6 +50,7 @@ class ValidateRequest(BaseModel):
     generated: str
     settings: dict | None = None
     previous_variants: list[str] = Field(default_factory=list)
+    custom_prompt: str = ""
 
 
 class ValidateResponse(BaseModel):

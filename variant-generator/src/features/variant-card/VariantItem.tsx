@@ -48,6 +48,7 @@ export function VariantItem({
       setLocalContent(updated.content);
       setDraftContent(updated.content);
       patchInCache(qc, taskId, item.id, updated);
+      setIsPromptOpen(false);
     },
   });
 
