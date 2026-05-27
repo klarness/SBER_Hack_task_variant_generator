@@ -86,6 +86,8 @@ class GigaChatClient:
                 '  "topic": "string",\n'
                 '  "task_type": "problem|test|exercise|question|task",\n'
                 '  "difficulty": "easy|medium|hard",\n'
+                '  "grade_level": "string (например, \\"5 класс\\", \\"7-8 класс\\", \\"ВПР 6 класс\\", \\"ОГЭ\\", \\"ЕГЭ\\" или \\"не определен\\")",\n'
+                '  "exam_format": "string (например, \\"ВПР\\", \\"ОГЭ\\", \\"ЕГЭ\\", \\"контрольная\\", \\"самостоятельная\\", \\"учебник\\" или \\"не определен\\")",\n'
                 '  "items": [\n'
                 '    {"order": 1, "context": "string", "content": "string"}\n'
                 "  ]\n"
@@ -101,7 +103,10 @@ class GigaChatClient:
                 "- context используй только для общего условия;\n"
                 "- content должен содержать конкретный вопрос/задание;\n"
                 "- порядок заданий сохрани;\n"
-                "- если предмет передан учителем, используй его как основной источник истины.\n\n"
+                "- если предмет передан учителем, используй его как основной источник истины;\n"
+                "- grade_level определяй по сложности заданий, обозначению класса в шапке работы, упоминанию формата экзамена (ВПР/ОГЭ/ЕГЭ);\n"
+                "- exam_format определяй по структуре работы: ВПР имеет нумерацию заданий и баллы, ОГЭ/ЕГЭ — часть 1 и часть 2, учебник — упражнения с номерами параграфов;\n"
+                "- если класс или формат не определяются однозначно, используй \"не определен\".\n\n"
                 f"Название: {title}\n"
                 f"Заявленный предмет: {subject or 'не указан'}\n"
                 f"{subject_profile}\n"
@@ -443,6 +448,8 @@ def normalize_generation_settings(settings: dict[str, Any] | None) -> dict[str, 
         ),
         "preserve_difficulty": _bool(source.get("preserve_difficulty"), True),
         "check_answer_uniqueness": _bool(source.get("check_answer_uniqueness"), False),
+        "grade_level": str(source.get("grade_level") or "").strip(),
+        "exam_format": str(source.get("exam_format") or "").strip(),
     }
 
 
@@ -461,18 +468,30 @@ def render_generation_settings(settings: dict[str, Any]) -> str:
         for item in settings.get("variation_types", [])
     ]
     locked_parts = settings.get("locked_parts") or []
+    grade_level = settings.get("grade_level") or ""
+    exam_format = settings.get("exam_format") or ""
 
-    return "\n".join(
-        [
-            f"- выбранные типы вариации: {', '.join(selected) if selected else 'не заданы'};",
-            f"- типы чисел: {', '.join(settings.get('number_types') or [])};",
-            f"- диапазон чисел: {settings.get('number_range')};",
-            f"- сохранять сложность: {'да' if settings.get('preserve_difficulty') else 'нет'};",
-            f"- запрет на изменение частей условия: {', '.join(locked_parts) if locked_parts else 'не задан'};",
-            f"- проверять совпадение ответов между вариантами: {'да' if settings.get('check_answer_uniqueness') else 'нет'};",
-            "- не менять ключевые математические/предметные связи и не добавлять решение в текст задания.",
-        ]
+    lines = [
+        f"- выбранные типы вариации: {', '.join(selected) if selected else 'не заданы'};",
+        f"- типы чисел: {', '.join(settings.get('number_types') or [])};",
+        f"- диапазон чисел: {settings.get('number_range')};",
+        f"- сохранять сложность: {'да' if settings.get('preserve_difficulty') else 'нет'};",
+        f"- запрет на изменение частей условия: {', '.join(locked_parts) if locked_parts else 'не задан'};",
+        f"- проверять совпадение ответов между вариантами: {'да' if settings.get('check_answer_uniqueness') else 'нет'};",
+    ]
+    if grade_level:
+        lines.append(
+            f"- класс / целевая аудитория: {grade_level} — придерживайся словарного запаса и уровня абстракции этого класса."
+        )
+    if exam_format:
+        lines.append(
+            f"- формат проверочной работы: {exam_format} — соблюдай типовые шаблоны заданий этого формата."
+        )
+    lines.append(
+        "- не менять ключевые математические/предметные связи и не добавлять решение в текст задания."
     )
+
+    return "\n".join(lines)
 
 
 def select_generation_strategy(settings: dict[str, Any]) -> str:
