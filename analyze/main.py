@@ -127,25 +127,32 @@ async def generate(request: GenerateRequest):
 @app.post("/validate", response_model=ValidateResponse)
 async def validate(request: ValidateRequest):
     try:
-        valid = await llm_client.validate_variant(request.model_dump())
+        result = await llm_client.validate_variant(request.model_dump())
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"GigaChat validate failed: {exc}") from exc
 
-    return ValidateResponse(valid=valid)
+    return ValidateResponse(
+        valid=bool(result.get("valid")),
+        reason=str(result.get("reason") or ""),
+    )
 
 
 @app.post("/export")
-async def export(task: dict[str, Any] = Body(...), format: str = "docx"):
+async def export(
+    task: dict[str, Any] = Body(...),
+    format: str = "docx",
+    include_difficulty: bool = False,
+):
     export_format = (format or "docx").lower().strip()
     if export_format not in {"docx", "pdf"}:
         raise HTTPException(status_code=400, detail="Unsupported export format. Use docx or pdf.")
 
     try:
         if export_format == "pdf":
-            data, filename, ascii_filename = build_task_pdf(task)
+            data, filename, ascii_filename = build_task_pdf(task, include_difficulty=include_difficulty)
             content_type = PDF_CONTENT_TYPE
         else:
-            data, filename, ascii_filename = build_task_docx(task)
+            data, filename, ascii_filename = build_task_docx(task, include_difficulty=include_difficulty)
             content_type = DOCX_CONTENT_TYPE
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"{export_format.upper()} export failed: {exc}") from exc

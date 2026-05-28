@@ -26,6 +26,7 @@ from analyze.services.export.docx_exporter import (
     _html_to_plain_text,
     _int,
     _safe_filename,
+    _variant_difficulty,
 )
 
 PDF_CONTENT_TYPE = "application/pdf"
@@ -33,7 +34,7 @@ FONT_NAME = "DejaVuSans"
 FONT_BOLD_NAME = "DejaVuSans-Bold"
 
 
-def build_task_pdf(task: dict[str, Any]) -> tuple[bytes, str, str]:
+def build_task_pdf(task: dict[str, Any], *, include_difficulty: bool = False) -> tuple[bytes, str, str]:
     _register_fonts()
 
     title = _clean_text(task.get("title")) or "Варианты заданий"
@@ -51,7 +52,7 @@ def build_task_pdf(task: dict[str, Any]) -> tuple[bytes, str, str]:
 
     styles = _styles()
     story: list[Any] = [Paragraph(_pdf_text(title), styles["title"]), Spacer(1, 8 * mm)]
-    _add_variants(story, task, styles, formula_image_paths)
+    _add_variants(story, task, styles, formula_image_paths, include_difficulty=include_difficulty)
 
     try:
         document.build(story)
@@ -121,6 +122,15 @@ def _styles() -> dict[str, ParagraphStyle]:
             textColor=colors.HexColor("#b42318"),
             spaceAfter=6,
         ),
+        "meta": ParagraphStyle(
+            "Meta",
+            fontName=base_font,
+            fontSize=10,
+            leading=13,
+            alignment=1,
+            textColor=colors.HexColor("#5f6b54"),
+            spaceAfter=6,
+        ),
     }
 
 
@@ -129,6 +139,8 @@ def _add_variants(
     task: dict[str, Any],
     styles: dict[str, ParagraphStyle],
     formula_image_paths: list[str],
+    *,
+    include_difficulty: bool = False,
 ) -> None:
     variants = task.get("variants") or []
     if not isinstance(variants, list) or not variants:
@@ -143,6 +155,10 @@ def _add_variants(
 
         variant_number = _int(variant.get("variant_number")) or index + 1
         story.append(Paragraph(f"Вариант {variant_number}", styles["variant"]))
+        if include_difficulty:
+            difficulty = _variant_difficulty(task, variant)
+            if difficulty:
+                story.append(Paragraph(_pdf_text(f"Сложность: {difficulty}"), styles["meta"]))
 
         items = variant.get("items") or []
         if not isinstance(items, list) or not items:

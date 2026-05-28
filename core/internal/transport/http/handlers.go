@@ -71,14 +71,14 @@ func (h *Handlers) CreateTask(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 	variantCount := h.defaultVariantCount
 	if raw := r.FormValue("variant_count"); raw != "" {
 		parsed, err := strconv.Atoi(raw)
-		if err != nil || parsed < 2 || parsed > 10 {
-			writeError(w, stdhttp.StatusBadRequest, errors.New("variant_count must be an integer from 2 to 10"))
+		if err != nil || parsed < 1 || parsed > 10 {
+			writeError(w, stdhttp.StatusBadRequest, errors.New("variant_count must be an integer from 1 to 10"))
 			return
 		}
 		variantCount = parsed
 	}
-	if variantCount < 2 || variantCount > 10 {
-		writeError(w, stdhttp.StatusBadRequest, errors.New("variant_count must be an integer from 2 to 10"))
+	if variantCount < 1 || variantCount > 10 {
+		writeError(w, stdhttp.StatusBadRequest, errors.New("variant_count must be an integer from 1 to 10"))
 		return
 	}
 
@@ -320,7 +320,8 @@ func (h *Handlers) ExportTask(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 		return
 	}
 
-	result, err := h.taskService.ExportTask(r.Context(), userID, taskID, variantNumbers, r.URL.Query().Get("format"))
+	includeDifficulty := parseBoolQuery(r.URL.Query().Get("include_difficulty"))
+	result, err := h.taskService.ExportTask(r.Context(), userID, taskID, variantNumbers, r.URL.Query().Get("format"), includeDifficulty)
 	if err != nil {
 		writeDomainError(w, err)
 		return
@@ -334,6 +335,11 @@ func (h *Handlers) ExportTask(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 	}
 	w.WriteHeader(stdhttp.StatusOK)
 	_, _ = w.Write(result.Data)
+}
+
+func parseBoolQuery(raw string) bool {
+	raw = strings.ToLower(strings.TrimSpace(raw))
+	return raw == "1" || raw == "true" || raw == "yes" || raw == "on"
 }
 
 func parseVariantNumbers(raw string) ([]int, error) {

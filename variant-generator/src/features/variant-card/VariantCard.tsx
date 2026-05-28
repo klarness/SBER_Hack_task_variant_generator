@@ -6,10 +6,12 @@ interface Props {
   variant: Variant;
   taskItems: TaskItem[]; 
   a4?: boolean;
+  highlightDiff?: boolean;
 }
 
-export function VariantCard({ taskId, variant, taskItems, a4 = true }: Props) {
+export function VariantCard({ taskId, variant, taskItems, a4 = true, highlightDiff = false }: Props) {
   const orderMap = new Map(taskItems.map((ti) => [ti.id, ti.order]));
+  const sourceMap = new Map(taskItems.map((ti) => [ti.id, ti.content]));
 
   const sortedItems = [...(variant.items ?? [])].sort((a, b) => {
     const oa = orderMap.get(a.task_item_id) ?? 0;
@@ -37,6 +39,8 @@ export function VariantCard({ taskId, variant, taskItems, a4 = true }: Props) {
             variantNumber={variant.variant_number}
             questionOrder={orderMap.get(item.task_item_id) ?? 0}
             item={item}
+            sourceContent={sourceMap.get(item.task_item_id)}
+            highlightDiff={highlightDiff}
           />
         ))}
         {sortedItems.length === 0 && (

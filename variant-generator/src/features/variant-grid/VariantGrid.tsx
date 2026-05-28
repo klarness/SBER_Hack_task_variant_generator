@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, Highlighter } from "lucide-react";
 import { VariantCard } from "@/features/variant-card/VariantCard";
 import type { Task } from "@/shared/types/domain";
+import { cn } from "@/shared/lib/cn";
 
 interface Props {
   task: Task;
@@ -14,6 +15,7 @@ export function VariantGrid({ task }: Props) {
   const taskItems = task.task_items ?? [];
 
   const [index, setIndex] = useState(0);
+  const [highlightDiff, setHighlightDiff] = useState(false);
 
   useEffect(() => {
     if (index >= variants.length) setIndex(0);
@@ -81,7 +83,9 @@ export function VariantGrid({ task }: Props) {
           </button>
         </div>
 
-        <div className="px-5 pb-3 min-h-[40px] flex items-center justify-center gap-1.5 flex-wrap">
+        <div className="px-5 pb-3 min-h-[40px] flex items-center justify-between gap-3 flex-wrap">
+          <div className="min-w-[150px]" />
+          <div className="flex items-center justify-center gap-1.5 flex-wrap">
           {variants.length > 1 &&
             variants.map((v, i) => (
               <button
@@ -98,6 +102,21 @@ export function VariantGrid({ task }: Props) {
                 {v.variant_number}
               </button>
             ))}
+          </div>
+          <button
+            type="button"
+            onClick={() => setHighlightDiff((value) => !value)}
+            className={cn(
+              "h-8 px-3 rounded-full inline-flex items-center gap-1.5 border text-xs font-semibold transition",
+              highlightDiff
+                ? "bg-amber-200/85 border-amber-300 text-amber-950"
+                : "bg-white/70 border-border text-ink-700 hover:bg-white"
+            )}
+            title="Подсветить отличия от исходных заданий"
+          >
+            <Highlighter size={14} strokeWidth={1.8} />
+            Изменения
+          </button>
         </div>
       </div>
 
@@ -107,6 +126,7 @@ export function VariantGrid({ task }: Props) {
           taskId={task.id}
           variant={current}
           taskItems={taskItems}
+          highlightDiff={highlightDiff}
         />
       </div>
     </>

@@ -25,9 +25,11 @@ CHOICE_MARKER_RE = re.compile(r"(?:(?<=^)|(?<=[;\s]))([а-гА-Гa-dA-D]\)\s*)")
 
 
 def normalize_math_markup(text: str) -> str:
+    text = _remove_dangling_dollars(text)
     text = _normalize_existing_math(text)
     text = _close_unbalanced_dollars(text)
     text = _wrap_choice_math(text)
+    text = _remove_dangling_dollars(text)
     return text
 
 
@@ -36,6 +38,18 @@ def _normalize_existing_math(text: str) -> str:
         return f"${_normalize_formula(match.group(1))}$"
 
     return re.sub(r"\$([^$\n]+)\$", replace, text)
+
+
+def _remove_dangling_dollars(text: str) -> str:
+    lines = []
+    for line in text.splitlines():
+        line = re.sub(r"\$\.\$\.+\s*$", "$.", line).rstrip()
+        line = re.sub(r"\$\$\.+\s*$", "$.", line).rstrip()
+        line = re.sub(r"\${2,}\s*$", "", line).rstrip()
+        if line.count("$") % 2 == 1 and re.search(r"\$[\s.,;:!?]*$", line):
+            line = re.sub(r"\$([\s.,;:!?]*)$", r"\1", line).rstrip()
+        lines.append(line)
+    return "\n".join(lines)
 
 
 def _close_unbalanced_dollars(text: str) -> str:

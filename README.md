@@ -45,7 +45,7 @@ VALKEY_IMAGE=valkey/valkey:7.2-alpine
 MIGRATE_IMAGE=migrate/migrate:v4.17.1
 ```
 
-Для работы нужно заполнить один из вариантов GigaChat:
+Для работы нужно заполнить один из вариантов GigaChat(модель GIGACHAT PRO):
 
 - `GIGACHAT_CREDENTIALS`;
 - `GIGACHAT_AUTHORIZATION_KEY`;

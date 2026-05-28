@@ -16,14 +16,14 @@ from mathml2omml import convert as mathml_to_omml
 DOCX_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
 
-def build_task_docx(task: dict[str, Any]) -> tuple[bytes, str, str]:
+def build_task_docx(task: dict[str, Any], *, include_difficulty: bool = False) -> tuple[bytes, str, str]:
     document = Document()
     _configure_styles(document)
 
     title = _clean_text(task.get("title")) or "Варианты заданий"
     document.add_heading(title, level=1)
 
-    _add_variants(document, task)
+    _add_variants(document, task, include_difficulty=include_difficulty)
 
     output = io.BytesIO()
     document.save(output)
@@ -90,7 +90,7 @@ def _add_source_items(document: Document, task: dict[str, Any]) -> None:
             _add_numbered_text(document, order, content)
 
 
-def _add_variants(document: Document, task: dict[str, Any]) -> None:
+def _add_variants(document: Document, task: dict[str, Any], *, include_difficulty: bool = False) -> None:
     variants = task.get("variants") or []
     if not isinstance(variants, list) or not variants:
         document.add_heading("Варианты", level=2)
@@ -106,6 +106,8 @@ def _add_variants(document: Document, task: dict[str, Any]) -> None:
         variant_number = _int(variant.get("variant_number")) or index + 1
         heading = document.add_heading(f"Вариант {variant_number}", level=2)
         heading.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        if include_difficulty:
+            _add_variant_difficulty(document, task, variant)
 
         items = variant.get("items") or []
         if not isinstance(items, list) or not items:
@@ -124,6 +126,22 @@ def _add_variants(document: Document, task: dict[str, Any]) -> None:
                 _add_numbered_content(document, item_index, content)
             else:
                 _add_failed_item(document, item_index, "Пустой текст задания.")
+
+
+def _add_variant_difficulty(document: Document, task: dict[str, Any], variant: dict[str, Any]) -> None:
+    difficulty = _variant_difficulty(task, variant)
+    if not difficulty:
+        return
+
+    paragraph = document.add_paragraph()
+    paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    run = paragraph.add_run(f"Сложность: {difficulty}")
+    run.italic = True
+    run.font.size = Pt(10)
+
+
+def _variant_difficulty(task: dict[str, Any], variant: dict[str, Any]) -> str:
+    return _clean_text(variant.get("difficulty")) or _clean_text(task.get("difficulty"))
 
 
 def _add_failed_item(document: Document, index: int, error_message: str) -> None:

@@ -153,6 +153,7 @@ class GigaChatClient:
             system=system_prompt,
             user=user_prompt,
             temperature=0.25 if str(request.get("custom_prompt") or "").strip() else 0.45,
+            fallback_field="content",
         )
         content = response.get("content")
         if not isinstance(content, str) or not content.strip():
@@ -168,7 +169,7 @@ class GigaChatClient:
             content,
         )
 
-    async def validate_variant(self, request: dict[str, Any]) -> bool:
+    async def validate_variant(self, request: dict[str, Any]) -> dict[str, Any]:
         settings = normalize_generation_settings(request.get("settings") or {})
         previous_variants = normalize_previous_variants(request.get("previous_variants"))
         request = sanitize_prompt_request(
@@ -183,20 +184,27 @@ class GigaChatClient:
             request["previous_variants"],
         )
         if is_duplicate_variant(str(request.get("generated") or ""), request["previous_variants"]):
-            return False
+            return {"valid": False, "reason": "Почти дословное совпадение с уже созданным вариантом."}
 
         if not choice_structure_matches(
             str(request.get("original") or ""),
             str(request.get("generated") or ""),
         ):
-            return False
+            return {"valid": False, "reason": "Не совпадает количество вариантов ответа или подпунктов."}
 
         if not lexical_variation_is_valid(
             str(request.get("original") or ""),
             str(request.get("generated") or ""),
             request["previous_variants"],
         ):
-            return False
+            return {
+                "valid": False,
+                "reason": (
+                    "Вариант слишком похож на оригинал или уже созданные варианты по теме, "
+                    "сюжету, ключевым словам либо ожидаемому ответу. Сохрани тип задания, "
+                    "но смени микротему, ситуацию, объекты и ключевые слова."
+                ),
+            }
 
         settings_text = render_generation_settings(settings)
         previous_variants_text = render_previous_variants(request["previous_variants"])
@@ -223,7 +231,8 @@ class GigaChatClient:
         valid = response.get("valid")
         if not isinstance(valid, bool):
             raise ValueError("GigaChat response does not contain boolean valid.")
-        return valid
+        reason = response.get("reasoning") or response.get("reason") or ""
+        return {"valid": valid, "reason": str(reason)}
 
     async def extract_text_from_image(
         self,
@@ -255,9 +264,10 @@ class GigaChatClient:
         system: str,
         user: str,
         temperature: float = 0,
+        fallback_field: str = "",
     ) -> dict[str, Any]:
         content = await self.chat_text(system=system, user=user, temperature=temperature)
-        return parse_json_object(content)
+        return parse_json_object(content, fallback_field=fallback_field)
 
     async def chat_text(
         self,
@@ -558,7 +568,15 @@ def filter_previous_variants_for_current_source(source: str, previous_variants: 
 
 def sanitize_prompt_request(request: dict[str, Any]) -> dict[str, Any]:
     sanitized = dict(request)
-    for key in ("source_content", "current_content", "context", "custom_prompt", "original", "generated"):
+    for key in (
+        "source_content",
+        "current_content",
+        "context",
+        "custom_prompt",
+        "validation_feedback",
+        "original",
+        "generated",
+    ):
         if key in sanitized:
             sanitized[key] = html_to_prompt_text(str(sanitized.get(key) or ""))
     previous_variants = sanitized.get("previous_variants")
@@ -641,28 +659,72 @@ def multiple_choice_signature(value: str) -> tuple[str, tuple[str, ...]] | None:
     return stem, tuple(sorted(options))
 
 
-def parse_json_object(content: str) -> dict[str, Any]:
+def parse_json_object(content: str, *, fallback_field: str = "") -> dict[str, Any]:
     cleaned = content.strip()
     cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned)
     cleaned = re.sub(r"\s*```$", "", cleaned)
+    candidate = cleaned
 
     try:
         value = json.loads(cleaned)
     except json.JSONDecodeError:
         start = cleaned.find("{")
         end = cleaned.rfind("}")
-        if start == -1 or end == -1 or end <= start:
-            raise
-        candidate = cleaned[start : end + 1]
+        if start != -1 and end > start:
+            candidate = cleaned[start : end + 1]
+
+        content_value = extract_jsonish_string_field(candidate, fallback_field)
+        if content_value:
+            return {fallback_field: content_value}
 
         try:
             value = json.loads(candidate)
         except json.JSONDecodeError:
-            value = repair_json(candidate, return_objects=True)
+            try:
+                value = repair_json(candidate, return_objects=True)
+            except Exception:
+                content_value = extract_jsonish_string_field(candidate, fallback_field)
+                if content_value:
+                    value = {fallback_field: content_value}
+                else:
+                    content_value = extract_jsonish_string_field(cleaned, fallback_field)
+                    if content_value:
+                        value = {fallback_field: content_value}
+                    else:
+                        raise
 
     if not isinstance(value, dict):
+        content_value = extract_jsonish_string_field(cleaned, fallback_field)
+        if content_value:
+            return {fallback_field: content_value}
         raise ValueError("Expected JSON object from GigaChat.")
     return value
+
+
+def extract_jsonish_string_field(source: str, field: str) -> str:
+    if not field:
+        return ""
+
+    source = source.strip()
+    match = re.search(rf'["\']{re.escape(field)}["\']\s*:\s*', source, flags=re.DOTALL)
+    if not match:
+        return ""
+
+    value = source[match.end() :].strip()
+    if value.endswith("}"):
+        value = value[:-1].rstrip()
+    value = re.sub(r",\s*$", "", value).strip()
+    if len(value) >= 2 and value[0] in {'"', "'"} and value[-1] == value[0]:
+        value = value[1:-1]
+    elif value and value[0] in {'"', "'"}:
+        value = value[1:]
+
+    return (
+        value.replace(r"\\n", "\n")
+        .replace(r"\"", '"')
+        .replace(r"\\", "\\")
+        .strip()
+    )
 
 
 def _string_list(value: Any) -> list[str]:

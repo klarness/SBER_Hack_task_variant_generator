@@ -24,6 +24,7 @@ export function ExportBar({ taskId, title, variants = [] }: Props) {
   );
   const variantNumbersKey = variantNumbers.join(",");
   const [selectedNumbers, setSelectedNumbers] = useState<number[]>(variantNumbers);
+  const [includeDifficulty, setIncludeDifficulty] = useState(false);
 
   useEffect(() => {
     setSelectedNumbers(variantNumbers);
@@ -31,14 +32,14 @@ export function ExportBar({ taskId, title, variants = [] }: Props) {
 
   const docxMutation = useMutation({
     mutationFn: async () => {
-      const res = await exportTask(taskId, selectedNumbers, "docx");
+      const res = await exportTask(taskId, selectedNumbers, "docx", includeDifficulty);
       downloadBlob(res);
     },
   });
 
   const pdfMutation = useMutation({
     mutationFn: async () => {
-      const res = await exportTask(taskId, selectedNumbers, "pdf");
+      const res = await exportTask(taskId, selectedNumbers, "pdf", includeDifficulty);
       downloadBlob(res);
     },
   });
@@ -62,6 +63,16 @@ export function ExportBar({ taskId, title, variants = [] }: Props) {
       >
         {title}
       </h1>
+
+      <label className="h-8 inline-flex items-center gap-2 rounded-full border border-border bg-white/60 px-3 text-xs font-semibold text-ink-700 cursor-pointer hover:bg-white transition">
+        <input
+          type="checkbox"
+          className="h-3.5 w-3.5 accent-[var(--accent)]"
+          checked={includeDifficulty}
+          onChange={(event) => setIncludeDifficulty(event.currentTarget.checked)}
+        />
+        Сложность
+      </label>
 
       <Button
         size="sm"

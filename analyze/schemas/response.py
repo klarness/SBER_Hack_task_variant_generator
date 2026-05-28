@@ -34,6 +34,7 @@ class GenerateRequest(BaseModel):
     settings: dict | None = None
     previous_variants: list[str] = Field(default_factory=list)
     custom_prompt: str = ""
+    validation_feedback: str = ""
 
 
 class GenerateResponse(BaseModel):
@@ -55,3 +56,4 @@ class ValidateRequest(BaseModel):
 
 class ValidateResponse(BaseModel):
     valid: bool
+    reason: str = ""

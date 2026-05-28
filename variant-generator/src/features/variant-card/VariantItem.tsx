@@ -16,12 +16,16 @@ interface Props {
   variantNumber: number;
   questionOrder: number;
   item: VI;
+  sourceContent?: string;
+  highlightDiff?: boolean;
 }
 
 export function VariantItem({
   taskId,
   questionOrder,
   item,
+  sourceContent,
+  highlightDiff = false,
 }: Props) {
   const qc = useQueryClient();
   const [localContent, setLocalContent] = useState(item.content);
@@ -169,6 +173,7 @@ export function VariantItem({
         ) : (
           <LatexText
             text={localContent}
+            highlightAgainst={highlightDiff ? sourceContent : undefined}
             className="text-sm text-ink-900 leading-relaxed"
           />
         )}

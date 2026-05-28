@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"sort"
 	"strings"
@@ -236,6 +237,7 @@ func (s *TaskService) RegenerateVariantItem(ctx context.Context, userID, variant
 		currentContent = variantItem.Content
 	}
 	attempt := 0
+	validationFeedback := ""
 	err = retry.Do(
 		func() error {
 			attempt++
@@ -249,24 +251,25 @@ func (s *TaskService) RegenerateVariantItem(ctx context.Context, userID, variant
 				"previous_variants_count", len(previousVariants),
 			)
 			item, err := s.ai.Generate(ctx, domain.GenerateRequest{
-				UserID:           userID,
-				TaskID:           task.ID,
-				TaskItemID:       taskItem.ID,
-				Subject:          task.Subject,
-				VariantNumber:    variantNumber,
-				Order:            taskItem.Order,
-				Context:          taskItem.Context,
-				SourceContent:    taskItem.Content,
-				CurrentContent:   currentContent,
-				Settings:         task.Settings,
-				PreviousVariants: previousVariants,
-				CustomPrompt:     customPrompt,
+				UserID:             userID,
+				TaskID:             task.ID,
+				TaskItemID:         taskItem.ID,
+				Subject:            task.Subject,
+				VariantNumber:      variantNumber,
+				Order:              taskItem.Order,
+				Context:            taskItem.Context,
+				SourceContent:      taskItem.Content,
+				CurrentContent:     currentContent,
+				Settings:           task.Settings,
+				PreviousVariants:   previousVariants,
+				CustomPrompt:       customPrompt,
+				ValidationFeedback: validationFeedback,
 			})
 			if err != nil {
 				return err
 			}
 
-			valid, err := s.ai.Validate(ctx, domain.ValidateRequest{
+			validation, err := s.ai.Validate(ctx, domain.ValidateRequest{
 				UserID:           userID,
 				TaskID:           task.ID,
 				TaskItemID:       taskItem.ID,
@@ -281,7 +284,8 @@ func (s *TaskService) RegenerateVariantItem(ctx context.Context, userID, variant
 			if err != nil {
 				return err
 			}
-			if !valid {
+			if !validation.Valid {
+				validationFeedback = validation.Reason
 				s.logger.WarnContext(ctx, "variant item regeneration validation rejected generated content",
 					"user_id", userID.String(),
 					"task_id", task.ID.String(),
@@ -290,8 +294,9 @@ func (s *TaskService) RegenerateVariantItem(ctx context.Context, userID, variant
 					"attempt", attempt,
 					"variant_number", variantNumber,
 					"previous_variants_count", len(previousVariants),
+					"reason", validation.Reason,
 				)
-				return domain.ErrValidationFailed
+				return fmt.Errorf("%w: %s", domain.ErrValidationFailed, validation.Reason)
 			}
 
 			generated = item
@@ -447,7 +452,7 @@ func variantContextForItem(task *domain.Task, taskItemID, currentItemID uuid.UUI
 	return variantNumber, previousVariants
 }
 
-func (s *TaskService) ExportTask(ctx context.Context, userID, taskID uuid.UUID, variantNumbers []int, format string) (*domain.ExportResult, error) {
+func (s *TaskService) ExportTask(ctx context.Context, userID, taskID uuid.UUID, variantNumbers []int, format string, includeDifficulty bool) (*domain.ExportResult, error) {
 	format = normalizeExportFormat(format)
 	if format == "" {
 		return nil, domain.ErrInvalidInput
@@ -457,6 +462,7 @@ func (s *TaskService) ExportTask(ctx context.Context, userID, taskID uuid.UUID, 
 		"task_id", taskID.String(),
 		"selected_variants_count", len(variantNumbers),
 		"format", format,
+		"include_difficulty", includeDifficulty,
 	)
 	task, err := s.repo.GetTaskWithDetails(ctx, userID, taskID)
 	if err != nil {
@@ -468,7 +474,7 @@ func (s *TaskService) ExportTask(ctx context.Context, userID, taskID uuid.UUID, 
 		return nil, err
 	}
 	filterTaskVariants(task, variantNumbers)
-	result, err := s.ai.Export(ctx, task, format)
+	result, err := s.ai.Export(ctx, task, format, includeDifficulty)
 	if err != nil {
 		s.logger.ErrorContext(ctx, "task export failed",
 			"user_id", userID.String(),

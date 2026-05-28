@@ -2,10 +2,10 @@ import re
 from dataclasses import dataclass
 
 
-LETTER_MARKER_RE = re.compile(r"(?:(?<=^)|(?<=[\s;:!?]))([A-DА-Га-г])\s*[\).](?=\s+\S)", re.IGNORECASE)
+LETTER_MARKER_RE = re.compile(r"(?:(?<=^)|(?<=[\s;:!?]))([A-DVGa-dvgА-Га-г])\s*[\).](?=\s+\S)", re.IGNORECASE)
 NUMBER_MARKER_RE = re.compile(r"(?:(?<=^)|(?<=[\s;:!?]))([1-9]\d*)\s*[\).](?=\s+\S)")
 CIRCLE_MARKER_RE = re.compile(r"(?:(?<=^)|(?<=[\s;]))[\u25CBОO]\s+(?=\S)")
-LINE_LETTER_RE = re.compile(r"^\s*[A-DА-Га-г]\s*[\).]\s+\S", re.IGNORECASE)
+LINE_LETTER_RE = re.compile(r"^\s*[A-DVGa-dvgА-Га-г]\s*[\).]\s+\S", re.IGNORECASE)
 LINE_NUMBER_RE = re.compile(r"^\s*[1-9]\d*\s*[\).]\s+\S")
 LINE_CIRCLE_RE = re.compile(r"^\s*[\u25CBОO]\s+\S")
 CHOICE_TASK_RE = re.compile(
@@ -45,24 +45,27 @@ class ParsedInlineChoices:
 def detect_choice_structure(text: str) -> ChoiceStructure:
     lines = [line.strip() for line in str(text or "").splitlines() if line.strip()]
 
+    inline_counts = {
+        "circle": len(CIRCLE_MARKER_RE.findall(text)),
+        "letter": len(LETTER_MARKER_RE.findall(text)),
+        "number": len(NUMBER_MARKER_RE.findall(text)),
+    }
     line_counts = {
         "circle": sum(1 for line in lines if LINE_CIRCLE_RE.search(line)),
         "letter": sum(1 for line in lines if LINE_LETTER_RE.search(line)),
         "number": sum(1 for line in lines if LINE_NUMBER_RE.search(line)),
         "plain": _plain_option_line_count(lines),
     }
-    marker, count = max(line_counts.items(), key=lambda item: item[1])
+    marker, count = max(
+        {**line_counts, **inline_counts}.items(),
+        key=lambda item: item[1],
+    )
     if count >= 2:
-        return ChoiceStructure(count=count, marker=marker, multiline=True)
-
-    inline_counts = {
-        "circle": len(CIRCLE_MARKER_RE.findall(text)),
-        "letter": len(LETTER_MARKER_RE.findall(text)),
-        "number": len(NUMBER_MARKER_RE.findall(text)),
-    }
-    marker, count = max(inline_counts.items(), key=lambda item: item[1])
-    if count >= 2:
-        return ChoiceStructure(count=count, marker=marker, multiline=False)
+        return ChoiceStructure(
+            count=count,
+            marker=marker,
+            multiline=line_counts.get(marker, 0) == count,
+        )
 
     return ChoiceStructure()
 
@@ -94,8 +97,6 @@ def choice_structure_matches(original: str, generated: str) -> bool:
 
     generated_structure = detect_choice_structure(generated)
     if not generated_structure.exists:
-        return False
-    if generated_structure.multiline != original_structure.multiline:
         return False
     if generated_structure.count != original_structure.count:
         return False

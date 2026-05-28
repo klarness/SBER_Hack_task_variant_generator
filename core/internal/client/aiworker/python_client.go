@@ -158,7 +158,7 @@ func (c *PythonClient) Generate(ctx context.Context, req domain.GenerateRequest)
 	}, nil
 }
 
-func (c *PythonClient) Validate(ctx context.Context, req domain.ValidateRequest) (bool, error) {
+func (c *PythonClient) Validate(ctx context.Context, req domain.ValidateRequest) (*domain.ValidateResult, error) {
 	c.logger.InfoContext(ctx, "ai validate request started",
 		"user_id", req.UserID.String(),
 		"task_id", req.TaskID.String(),
@@ -167,7 +167,8 @@ func (c *PythonClient) Validate(ctx context.Context, req domain.ValidateRequest)
 	)
 
 	var resp struct {
-		Valid bool `json:"valid"`
+		Valid  bool   `json:"valid"`
+		Reason string `json:"reason"`
 	}
 	if err := c.doJSON(ctx, http.MethodPost, "/validate", req, &resp); err != nil {
 		c.logger.ErrorContext(ctx, "ai validate request failed",
@@ -177,7 +178,7 @@ func (c *PythonClient) Validate(ctx context.Context, req domain.ValidateRequest)
 			"variant_number", req.VariantNumber,
 			"error", err,
 		)
-		return false, err
+		return nil, err
 	}
 	c.logger.InfoContext(ctx, "ai validate request completed",
 		"user_id", req.UserID.String(),
@@ -185,16 +186,18 @@ func (c *PythonClient) Validate(ctx context.Context, req domain.ValidateRequest)
 		"task_item_id", req.TaskItemID.String(),
 		"variant_number", req.VariantNumber,
 		"valid", resp.Valid,
+		"reason", resp.Reason,
 	)
-	return resp.Valid, nil
+	return &domain.ValidateResult{Valid: resp.Valid, Reason: resp.Reason}, nil
 }
 
-func (c *PythonClient) Export(ctx context.Context, task *domain.Task, format string) (*domain.ExportResult, error) {
+func (c *PythonClient) Export(ctx context.Context, task *domain.Task, format string, includeDifficulty bool) (*domain.ExportResult, error) {
 	c.logger.InfoContext(ctx, "ai export request started",
 		"user_id", task.UserID.String(),
 		"task_id", task.ID.String(),
 		"variants_count", len(task.Variants),
 		"format", format,
+		"include_difficulty", includeDifficulty,
 	)
 
 	var body bytes.Buffer
@@ -205,6 +208,13 @@ func (c *PythonClient) Export(ctx context.Context, task *domain.Task, format str
 	path := "/export"
 	if format != "" {
 		path += "?format=" + format
+	}
+	if includeDifficulty {
+		if strings.Contains(path, "?") {
+			path += "&include_difficulty=true"
+		} else {
+			path += "?include_difficulty=true"
+		}
 	}
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+path, &body)
 	if err != nil {

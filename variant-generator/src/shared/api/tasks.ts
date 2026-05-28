@@ -72,10 +72,14 @@ export async function listTasks(
 export async function exportTask(
   id: string,
   variantNumbers: number[] = [],
-  format: "docx" | "pdf" = "docx"
+  format: "docx" | "pdf" = "docx",
+  includeDifficulty = false
 ): Promise<ExportResult> {
   const search = new URLSearchParams();
   search.set("format", format);
+  if (includeDifficulty) {
+    search.set("include_difficulty", "true");
+  }
   if (variantNumbers.length > 0) {
     search.set("variants", variantNumbers.join(","));
   }

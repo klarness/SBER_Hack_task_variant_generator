@@ -138,11 +138,11 @@ func (c fakeAIClient) Generate(_ context.Context, req domain.GenerateRequest) (*
 	}, nil
 }
 
-func (c fakeAIClient) Validate(context.Context, domain.ValidateRequest) (bool, error) {
-	return true, nil
+func (c fakeAIClient) Validate(context.Context, domain.ValidateRequest) (*domain.ValidateResult, error) {
+	return &domain.ValidateResult{Valid: true}, nil
 }
 
-func (c fakeAIClient) Export(context.Context, *domain.Task, string) (*domain.ExportResult, error) {
+func (c fakeAIClient) Export(context.Context, *domain.Task, string, bool) (*domain.ExportResult, error) {
 	return nil, errors.New("not implemented")
 }
 
@@ -168,14 +168,14 @@ func (c *recordingAIClient) Generate(_ context.Context, req domain.GenerateReque
 	}, nil
 }
 
-func (c *recordingAIClient) Validate(_ context.Context, req domain.ValidateRequest) (bool, error) {
+func (c *recordingAIClient) Validate(_ context.Context, req domain.ValidateRequest) (*domain.ValidateResult, error) {
 	c.mu.Lock()
 	c.validateRequests = append(c.validateRequests, req)
 	c.mu.Unlock()
-	return true, nil
+	return &domain.ValidateResult{Valid: true}, nil
 }
 
-func (c *recordingAIClient) Export(context.Context, *domain.Task, string) (*domain.ExportResult, error) {
+func (c *recordingAIClient) Export(context.Context, *domain.Task, string, bool) (*domain.ExportResult, error) {
 	return nil, errors.New("not implemented")
 }
 

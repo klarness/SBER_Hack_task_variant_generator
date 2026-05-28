@@ -113,18 +113,19 @@ type VariantItemHistory struct {
 }
 
 type GenerateRequest struct {
-	UserID           uuid.UUID       `json:"user_id"`
-	TaskID           uuid.UUID       `json:"task_id"`
-	TaskItemID       uuid.UUID       `json:"task_item_id"`
-	Subject          string          `json:"subject,omitempty"`
-	VariantNumber    int             `json:"variant_number"`
-	Order            int             `json:"order"`
-	Context          string          `json:"context,omitempty"`
-	SourceContent    string          `json:"source_content"`
-	CurrentContent   string          `json:"current_content,omitempty"`
-	Settings         json.RawMessage `json:"settings,omitempty"`
-	PreviousVariants []string        `json:"previous_variants,omitempty"`
-	CustomPrompt     string          `json:"custom_prompt,omitempty"`
+	UserID             uuid.UUID       `json:"user_id"`
+	TaskID             uuid.UUID       `json:"task_id"`
+	TaskItemID         uuid.UUID       `json:"task_item_id"`
+	Subject            string          `json:"subject,omitempty"`
+	VariantNumber      int             `json:"variant_number"`
+	Order              int             `json:"order"`
+	Context            string          `json:"context,omitempty"`
+	SourceContent      string          `json:"source_content"`
+	CurrentContent     string          `json:"current_content,omitempty"`
+	Settings           json.RawMessage `json:"settings,omitempty"`
+	PreviousVariants   []string        `json:"previous_variants,omitempty"`
+	CustomPrompt       string          `json:"custom_prompt,omitempty"`
+	ValidationFeedback string          `json:"validation_feedback,omitempty"`
 }
 
 type ValidateRequest struct {
@@ -138,6 +139,11 @@ type ValidateRequest struct {
 	Settings         json.RawMessage `json:"settings,omitempty"`
 	PreviousVariants []string        `json:"previous_variants,omitempty"`
 	CustomPrompt     string          `json:"custom_prompt,omitempty"`
+}
+
+type ValidateResult struct {
+	Valid  bool
+	Reason string
 }
 
 type ExportResult struct {

@@ -48,23 +48,24 @@ func (c *LimitedClient) Generate(ctx context.Context, req domain.GenerateRequest
 	return c.next.Generate(ctx, req)
 }
 
-func (c *LimitedClient) Validate(ctx context.Context, req domain.ValidateRequest) (bool, error) {
+func (c *LimitedClient) Validate(ctx context.Context, req domain.ValidateRequest) (*domain.ValidateResult, error) {
 	release, err := c.acquire(ctx, "validate")
 	if err != nil {
-		return false, err
+		return nil, err
 	}
 	defer release()
 	return c.next.Validate(ctx, req)
 }
 
-func (c *LimitedClient) Export(ctx context.Context, task *domain.Task, format string) (*domain.ExportResult, error) {
+func (c *LimitedClient) Export(ctx context.Context, task *domain.Task, format string, includeDifficulty bool) (*domain.ExportResult, error) {
 	c.logger.InfoContext(ctx, "ai worker export bypasses llm permit",
 		"operation", "export",
 		"concurrency", c.concurrency,
 		"in_flight", len(c.permits),
 		"format", format,
+		"include_difficulty", includeDifficulty,
 	)
-	return c.next.Export(ctx, task, format)
+	return c.next.Export(ctx, task, format, includeDifficulty)
 }
 
 func (c *LimitedClient) acquire(ctx context.Context, operation string) (func(), error) {

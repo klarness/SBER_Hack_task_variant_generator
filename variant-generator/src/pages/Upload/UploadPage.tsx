@@ -148,7 +148,7 @@ export function UploadPage() {
                 <Slider
                   value={variantCount}
                   onChange={setVariantCount}
-                  min={2}
+                  min={1}
                   max={10}
                 />
               </div>

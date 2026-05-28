@@ -23,8 +23,8 @@ type Repository interface {
 type AIClient interface {
 	Analyze(ctx context.Context, req AnalyzeRequest) (*AnalyzeResult, error)
 	Generate(ctx context.Context, req GenerateRequest) (*VariantItem, error)
-	Validate(ctx context.Context, req ValidateRequest) (bool, error)
-	Export(ctx context.Context, task *Task, format string) (*ExportResult, error)
+	Validate(ctx context.Context, req ValidateRequest) (*ValidateResult, error)
+	Export(ctx context.Context, task *Task, format string, includeDifficulty bool) (*ExportResult, error)
 }
 
 type RateLimiter interface {

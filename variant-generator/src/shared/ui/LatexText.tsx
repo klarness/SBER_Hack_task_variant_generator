@@ -5,36 +5,41 @@ import { cn } from "@/shared/lib/cn";
 interface Props {
   text: string;
   className?: string;
+  highlightAgainst?: string;
 }
 
 type Segment =
   | { type: "text"; value: string }
   | { type: "math"; value: string; html: string };
 
-export function LatexText({ text, className }: Props) {
-  const content = useMemo(() => renderContent(text), [text]);
+export function LatexText({ text, className, highlightAgainst }: Props) {
+  const diffContext = useMemo(
+    () => createDiffContext(highlightAgainst),
+    [highlightAgainst]
+  );
+  const content = useMemo(() => renderContent(text, diffContext), [text, diffContext]);
 
   return <div className={cn("latex-text", className)}>{content}</div>;
 }
 
-function renderContent(value: string): ReactNode {
+function renderContent(value: string, diffContext?: DiffContext): ReactNode {
   if (!/<[a-z][\s\S]*>/i.test(value) || typeof DOMParser === "undefined") {
-    return <div className="whitespace-pre-wrap">{renderLatexText(value, "plain")}</div>;
+    return <div className="whitespace-pre-wrap">{renderLatexText(value, "plain", diffContext)}</div>;
   }
 
   const document = new DOMParser().parseFromString(value, "text/html");
-  return renderChildren(document.body, "html");
+  return renderChildren(document.body, "html", diffContext);
 }
 
-function renderChildren(parent: Node, keyPrefix: string): ReactNode[] {
+function renderChildren(parent: Node, keyPrefix: string, diffContext?: DiffContext): ReactNode[] {
   return Array.from(parent.childNodes).map((node, index) =>
-    renderNode(node, `${keyPrefix}-${index}`)
+    renderNode(node, `${keyPrefix}-${index}`, diffContext)
   );
 }
 
-function renderNode(node: Node, key: string): ReactNode {
+function renderNode(node: Node, key: string, diffContext?: DiffContext): ReactNode {
   if (node.nodeType === Node.TEXT_NODE) {
-    return <Fragment key={key}>{renderLatexText(node.textContent || "", key)}</Fragment>;
+    return <Fragment key={key}>{renderLatexText(node.textContent || "", key, diffContext)}</Fragment>;
   }
 
   if (node.nodeType !== Node.ELEMENT_NODE) {
@@ -42,7 +47,7 @@ function renderNode(node: Node, key: string): ReactNode {
   }
 
   const element = node as HTMLElement;
-  const children = renderChildren(element, key);
+  const children = renderChildren(element, key, diffContext);
   const tag = element.tagName.toLowerCase();
 
   switch (tag) {
@@ -115,10 +120,31 @@ function renderNode(node: Node, key: string): ReactNode {
   }
 }
 
-function renderLatexText(text: string, keyPrefix: string): ReactNode[] {
+function renderLatexText(text: string, keyPrefix: string, diffContext?: DiffContext): ReactNode[] {
   return parseLatexSegments(decodeHtmlEntities(text)).map((segment, index) => {
     if (segment.type === "text") {
-      return <Fragment key={`${keyPrefix}-${index}`}>{segment.value}</Fragment>;
+      return (
+        <Fragment key={`${keyPrefix}-${index}`}>
+          {renderDiffText(segment.value, `${keyPrefix}-${index}`, diffContext)}
+        </Fragment>
+      );
+    }
+
+    const mathNode = (
+      <span
+        className="latex-inline"
+        dangerouslySetInnerHTML={{ __html: segment.html }}
+      />
+    );
+    if (shouldHighlightMath(segment.value, diffContext)) {
+      return (
+        <mark
+          key={`${keyPrefix}-${index}`}
+          className="rounded-md bg-amber-200/80 px-1 py-0.5 text-amber-950 ring-1 ring-amber-300/70"
+        >
+          {mathNode}
+        </mark>
+      );
     }
 
     return (
@@ -129,6 +155,71 @@ function renderLatexText(text: string, keyPrefix: string): ReactNode[] {
       />
     );
   });
+}
+
+type DiffContext = {
+  tokens: Set<string>;
+  formulas: Set<string>;
+};
+
+function createDiffContext(source?: string): DiffContext | undefined {
+  if (!source?.trim()) return undefined;
+  const plain = htmlToText(source);
+  return {
+    tokens: new Set(tokenizeComparableText(plain).map(normalizeDiffToken).filter(Boolean)),
+    formulas: new Set(parseLatexSegments(plain).filter((segment) => segment.type === "math").map((segment) => normalizeFormula(segment.value))),
+  };
+}
+
+function renderDiffText(text: string, keyPrefix: string, diffContext?: DiffContext): ReactNode[] {
+  if (!diffContext) return [text];
+
+  const parts = text.split(/([\p{L}\p{N}]+(?:[-–—][\p{L}\p{N}]+)?)/gu);
+  return parts.map((part, index) => {
+    const normalized = normalizeDiffToken(part);
+    if (!normalized || normalized.length < 2 || diffContext.tokens.has(normalized)) {
+      return <Fragment key={`${keyPrefix}-diff-${index}`}>{part}</Fragment>;
+    }
+
+    return (
+      <mark
+        key={`${keyPrefix}-diff-${index}`}
+        className="rounded bg-amber-200/80 px-0.5 text-amber-950 ring-1 ring-amber-300/60"
+      >
+        {part}
+      </mark>
+    );
+  });
+}
+
+function shouldHighlightMath(formula: string, diffContext?: DiffContext): boolean {
+  if (!diffContext) return false;
+  const normalized = normalizeFormula(formula);
+  return !!normalized && !diffContext.formulas.has(normalized);
+}
+
+function htmlToText(value: string): string {
+  if (typeof DOMParser === "undefined" || !/<[a-z][\s\S]*>/i.test(value)) {
+    return decodeHtmlEntities(value);
+  }
+  const document = new DOMParser().parseFromString(value, "text/html");
+  return document.body.textContent || "";
+}
+
+function tokenizeComparableText(value: string): string[] {
+  return value.match(/[\p{L}\p{N}]+(?:[-–—][\p{L}\p{N}]+)?/gu) ?? [];
+}
+
+function normalizeDiffToken(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/ё/g, "е")
+    .replace(/[^\p{L}\p{N}-]+/gu, "")
+    .trim();
+}
+
+function normalizeFormula(value: string): string {
+  return value.replace(/\s+/g, "").replace(/\\left|\\right/g, "").trim();
 }
 
 function decodeHtmlEntities(value: string): string {
