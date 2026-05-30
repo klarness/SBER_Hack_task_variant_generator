@@ -206,6 +206,23 @@ const SUBJECT_STRATEGIES: Record<
       hint: "Физическая модель и формулы остаются теми же",
     },
   ],
+  other: [
+    {
+      key: "replace_context",
+      label: "Заменить контекст",
+      hint: "Ситуация или пример меняется, тип задания сохраняется",
+    },
+    {
+      key: "synonymize_non_key_wording",
+      label: "Переформулировать условие",
+      hint: "Неключевые слова меняются на синонимы",
+    },
+    {
+      key: "change_names",
+      label: "Заменить имена и названия",
+      hint: "Меняются персоналии, термины и обозначения",
+    },
+  ],
 };
 
 const NUMBER_TYPES: { key: NumberType; label: string }[] = [

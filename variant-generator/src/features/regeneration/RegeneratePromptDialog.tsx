@@ -15,7 +15,7 @@ export function RegeneratePromptDialog({
   open,
   title,
   description,
-  loading,
+  loading = false,
   onCancel,
   onSubmit,
 }: Props) {

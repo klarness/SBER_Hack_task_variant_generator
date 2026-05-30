@@ -20,9 +20,11 @@ import { Input } from "@/shared/ui/Input";
 import { Button } from "@/shared/ui/Button";
 import { Card } from "@/shared/ui/Card";
 import { Spinner } from "@/shared/ui/Spinner";
+import { SUBJECTS } from "@/shared/constants/subjects";
 import type { Task, TaskStatus } from "@/shared/types/domain";
 
 type StatusFilter = "all" | TaskStatus;
+type SubjectFilter = "all" | string;
 
 const STATUS_OPTIONS: Array<{ value: StatusFilter; label: string }> = [
   { value: "all", label: "Все" },
@@ -34,15 +36,17 @@ const STATUS_OPTIONS: Array<{ value: StatusFilter; label: string }> = [
 export function LibraryPage() {
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<StatusFilter>("all");
+  const [subject, setSubject] = useState<SubjectFilter>("all");
   const [taskToDelete, setTaskToDelete] = useState<Task | null>(null);
   const queryClient = useQueryClient();
 
   const tasksQuery = useQuery({
-    queryKey: ["tasks", "library", query, status],
+    queryKey: ["tasks", "library", query, status, subject],
     queryFn: () =>
       listTasks({
         query: query.trim() || undefined,
         status: status === "all" ? undefined : status,
+        subject: subject === "all" ? undefined : subject,
         limit: 100,
       }),
     placeholderData: (previous) => previous,
@@ -105,8 +109,8 @@ export function LibraryPage() {
           <SummaryCard label="Ошибки" value={counters.failed} tone="danger" />
         </section>
 
-        <section className="flex items-center gap-3 mb-5">
-          <div className="relative flex-1 max-w-xl">
+        <section className="flex items-center gap-3 mb-5 flex-wrap">
+          <div className="relative flex-1 min-w-[260px] max-w-xl">
             <Search
               size={16}
               className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-500"
@@ -136,6 +140,34 @@ export function LibraryPage() {
                 {option.label}
               </button>
             ))}
+          </div>
+
+          <div className="relative">
+            <select
+              value={subject}
+              onChange={(event) => setSubject(event.target.value)}
+              className="h-10 appearance-none rounded-lg border border-border bg-white pl-3 pr-9 text-sm font-medium text-ink-900 hover:bg-surface-subtle transition cursor-pointer focus:outline-none focus:ring-2 focus:ring-accent/30"
+            >
+              <option value="all">Все предметы</option>
+              {SUBJECTS.map((option) => (
+                <option key={option.value} value={option.label}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            <svg
+              className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-ink-500"
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <polyline points="6 9 12 15 18 9" />
+            </svg>
           </div>
 
           <Button
@@ -168,7 +200,11 @@ export function LibraryPage() {
         )}
 
         {!tasksQuery.isPending && !tasksQuery.isError && tasks.length === 0 && (
-          <EmptyState hasQuery={query.trim().length > 0 || status !== "all"} />
+          <EmptyState
+            hasQuery={
+              query.trim().length > 0 || status !== "all" || subject !== "all"
+            }
+          />
         )}
 
         {tasks.length > 0 && (

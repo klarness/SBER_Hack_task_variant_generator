@@ -53,7 +53,7 @@ export function VariantGrid({ task }: Props) {
 
   return (
     <>
-      <div className="sticky top-0 z-10 bg-glass-toolbar backdrop-blur-header">
+      <div>
         <div className="px-5 pt-4 pb-3 flex items-center justify-between gap-3">
           <button
             type="button"

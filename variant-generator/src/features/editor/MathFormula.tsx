@@ -179,6 +179,17 @@ function MathFormulaView({
     };
   }, [isOpen]);
 
+  const dismissVirtualKeyboard = () => {
+    try {
+      if (fieldRef.current) {
+        fieldRef.current.blur();
+      }
+      window.mathVirtualKeyboard?.hide?.();
+    } catch {
+      // ignore
+    }
+  };
+
   const save = () => {
     const nextLatex = stripFormulaMarkers(
       fieldRef.current?.getValue("latex") || draft
@@ -201,10 +212,12 @@ function MathFormulaView({
       }
       setDraft(nextLatex);
     }
+    dismissVirtualKeyboard();
     setIsOpen(false);
   };
 
   const close = () => {
+    dismissVirtualKeyboard();
     if (!latex.trim()) {
       const pos = getPos();
       if (typeof pos === "number") {

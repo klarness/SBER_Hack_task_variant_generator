@@ -20,6 +20,11 @@ body,
   height: 100%;
 }
 
+html,
+body {
+  overflow-x: hidden;
+}
+
 /* keep focused inputs/textareas visible even when on-screen keyboards open */
 input,
 textarea,
@@ -76,6 +81,7 @@ body {
 .canvas-bg {
   position: relative;
   isolation: isolate;
+  overflow-x: clip;
 }
 .canvas-bg::before,
 .canvas-bg::after,

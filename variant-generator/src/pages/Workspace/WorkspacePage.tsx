@@ -62,13 +62,13 @@ export function WorkspacePage() {
   }, [task?.id]);
 
   return (
-    <div className="canvas-bg h-screen flex flex-col">
+    <div className="canvas-bg min-h-screen flex flex-col">
       <span className="canvas-blob canvas-blob-1" />
       <span className="canvas-blob canvas-blob-2" />
 
       <header
         className="canvas-content shrink-0 min-h-16 px-6 py-3 flex items-center gap-4
-                   bg-glass-toolbar backdrop-blur-header border-b border-glass-headerBorder"
+                   bg-white border-b border-border-subtle"
       >
         <Link
           to="/"
@@ -104,7 +104,7 @@ export function WorkspacePage() {
         )}
       </header>
 
-      <main className="canvas-content flex-1 min-h-0 overflow-hidden">
+      <main className="canvas-content flex-1">
         {isLoading && <LoadingState />}
         {isError && <ErrorState message="Не удалось загрузить задачу" />}
         {task && task.status === "failed" && (
@@ -114,9 +114,9 @@ export function WorkspacePage() {
           <PendingState />
         )}
         {task && isDone && (
-          <div className="h-full flex flex-col">
+          <div className="flex flex-col">
             <WorkflowSteps activeStep={activeStep} onChange={setActiveStep} />
-            <section className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
+            <section>
               {activeStep === "source" && (
                 <div className="max-w-5xl mx-auto">
                   <OriginalPreview task={task} />
@@ -169,7 +169,7 @@ function WorkflowSteps({
   const activeIndex = STEPS.findIndex((step) => step.id === activeStep);
 
   return (
-    <div className="shrink-0 border-b border-border-subtle bg-white/70 backdrop-blur">
+    <div className="shrink-0">
       <div className="max-w-5xl mx-auto px-5 py-3 grid md:grid-cols-3 gap-2">
         {STEPS.map((step, index) => {
           const active = step.id === activeStep;

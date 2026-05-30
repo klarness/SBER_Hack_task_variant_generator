@@ -12,6 +12,7 @@ export const SUBJECTS = [
   { value: "chemistry", label: "Химия" },
   { value: "informatics", label: "Информатика" },
   { value: "physics", label: "Физика" },
+  { value: "other", label: "Другое" },
 ] as const;
 
 export type SubjectValue = (typeof SUBJECTS)[number]["value"];
@@ -40,6 +41,7 @@ const SUBJECT_VARIATIONS: Record<SubjectValue, VariationType[]> = {
   chemistry: ["replace_numbers", "change_units", "change_names"],
   informatics: ["replace_numbers", "change_names", "reorder_steps"],
   physics: ["replace_numbers", "change_units", "replace_context"],
+  other: ["replace_context", "synonymize_non_key_wording", "change_names"],
 };
 
 const SUBJECT_NUMBER_TYPES: Record<SubjectValue, NumberType[]> = {
@@ -54,6 +56,7 @@ const SUBJECT_NUMBER_TYPES: Record<SubjectValue, NumberType[]> = {
   chemistry: ["integers", "decimals"],
   informatics: ["integers"],
   physics: ["integers", "decimals"],
+  other: [],
 };
 
 export function defaultSettingsForSubject(subject: SubjectValue): TaskSettings {

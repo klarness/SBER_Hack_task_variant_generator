@@ -17,7 +17,7 @@ export function OriginalPreview({ task }: Props) {
 
   return (
     <>
-      <header className="sticky top-0 z-10 bg-glass-toolbar backdrop-blur-header px-6 pt-5 pb-11">
+      <header className="px-6 pt-5 pb-11 text-center">
         <h2 className="text-[17px] font-bold text-ink-900 tracking-tight">
           Исходное задание
         </h2>

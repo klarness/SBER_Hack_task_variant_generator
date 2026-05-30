@@ -58,7 +58,6 @@ export function VariantItem({
       setLocalContent(updated.content);
       setDraftContent(updated.content);
       patchInCache(qc, taskId, item.id, updated);
-      setIsPromptOpen(false);
     },
   });
 
@@ -72,7 +71,7 @@ export function VariantItem({
         <div
           className={cn(
             "shrink-0 flex items-center gap-0.5 transition",
-            isFailed
+            isFailed || regenMutation.isPending
               ? "opacity-100"
               : "opacity-0 group-hover/item:opacity-100 focus-within:opacity-100"
           )}
@@ -194,9 +193,11 @@ export function VariantItem({
         open={isPromptOpen}
         title={`Перегенерировать задание ${questionOrder}`}
         description="Опишите, что именно нужно изменить в этом пункте. Инструкция будет передана в генерацию."
-        loading={regenMutation.isPending}
         onCancel={() => setIsPromptOpen(false)}
-        onSubmit={(prompt) => regenMutation.mutate(prompt)}
+        onSubmit={(prompt) => {
+          setIsPromptOpen(false);
+          regenMutation.mutate(prompt);
+        }}
       />
     </div>
   );

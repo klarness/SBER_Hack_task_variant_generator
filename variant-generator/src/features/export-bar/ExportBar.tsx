@@ -74,17 +74,6 @@ export function ExportBar({ taskId, title, variants = [] }: Props) {
         Сложность
       </label>
 
-      <Button
-        size="sm"
-        variant="secondary"
-        onClick={() => pdfMutation.mutate()}
-        loading={pdfMutation.isPending}
-        disabled={!hasVariants || selectedNumbers.length === 0}
-      >
-        <FileText size={14} strokeWidth={1.75} />
-        Экспорт PDF
-      </Button>
-
       <div className="flex items-center gap-1 rounded-full border border-border bg-white/60 px-1 py-1">
         {hasVariants ? (
           <>
@@ -127,6 +116,17 @@ export function ExportBar({ taskId, title, variants = [] }: Props) {
           </span>
         )}
       </div>
+
+      <Button
+        size="sm"
+        variant="secondary"
+        onClick={() => pdfMutation.mutate()}
+        loading={pdfMutation.isPending}
+        disabled={!hasVariants || selectedNumbers.length === 0}
+      >
+        <FileText size={14} strokeWidth={1.75} />
+        Экспорт PDF
+      </Button>
 
       <Button
         size="sm"
